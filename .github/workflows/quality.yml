@@ -1,0 +1,36 @@
+name: quality
+on: [pull_request, push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: apple333_test, POSTGRES_USER: apple333, POSTGRES_PASSWORD: test-only }
+        ports: ['5432:5432']
+        options: >- 
+          --health-cmd "pg_isready -U apple333 -d apple333_test" --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      NODE_ENV: test
+      APP_NAME: Apple333
+      APP_URL: http://localhost:3000
+      AUTH_URL: http://localhost:3000
+      AUTH_SECRET: test-only-not-a-production-secret-123456
+      DATABASE_URL: postgresql://apple333:test-only@localhost:5432/apple333_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.10.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma:validate
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:integration
+      - run: pnpm build
+      - run: pnpm test:e2e
