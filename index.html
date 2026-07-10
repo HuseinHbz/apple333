@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#050505" />
+    <title>اَپل‌خانه | تجربهٔ خرید اپل</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="announcement">ارسال رایگان سفارش‌های بالای ۲۰ میلیون تومان <span>·</span> پشتیبانی همه‌روزه</div>
+    <header class="nav wrap">
+      <a class="brand" href="#home" aria-label="صفحه اصلی اَپل‌خانه"><span class="brand-mark">●</span> اَپل‌خانه</a>
+      <nav aria-label="منوی اصلی">
+        <a href="#shop">فروشگاه</a><a href="#installments">خرید اقساطی</a><a href="#trade">تعویض گوشی</a><a href="#guide">دانستنی‌ها</a>
+      </nav>
+      <div class="nav-actions"><button class="icon-button" aria-label="جست‌وجو">⌕</button><button class="icon-button" aria-label="سبد خرید">⌑<i>۲</i></button><a class="account" href="platform.html">ورود / ثبت‌نام</a></div>
+    </header>
+
+    <main id="home">
+      <section class="hero wrap">
+        <div class="hero-copy">
+          <p class="eyebrow">APPLE PREMIUM STORE</p>
+          <h1>آن‌چه دوست دارید،<br><em>دقیق‌تر انتخاب کنید.</em></h1>
+          <p class="hero-text">فروش، مشاوره و تجربه‌ای یکپارچه برای تمام محصولات اپل؛ از اولین انتخاب تا سال‌ها بعد.</p>
+          <div class="hero-buttons"><a class="button button-light" href="#shop">مشاهده محصولات <b>←</b></a><a class="text-link" href="#installments">محاسبه خرید اقساطی <b>↙</b></a></div>
+          <div class="trust"><span><strong>۴</strong> شعبه فعال</span><span><strong>+۱۲K</strong> مشتری همراه</span><span><strong>۱۸</strong> ماه ضمانت</span></div>
+        </div>
+        <div class="hero-art" aria-label="iPhone 16 Pro">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="glow"></div>
+          <div class="phone phone-back"><div class="camera"><i></i><i></i><i></i></div></div>
+          <div class="phone phone-front"><div class="island"></div><div class="screen-reflection"></div><span>16<br><small>PRO</small></span></div>
+          <p class="device-label">iPhone 16 Pro <i>جدید</i></p>
+        </div>
+      </section>
+
+      <section class="categories wrap" aria-label="دسته‌بندی محصولات">
+        <a href="#shop"><span class="cat-icon phone-icon"></span><b>iPhone</b><small>۲۴ محصول</small></a>
+        <a href="#shop"><span class="cat-icon tablet-icon"></span><b>iPad</b><small>۱۱ محصول</small></a>
+        <a href="#shop"><span class="cat-icon laptop-icon"></span><b>Mac</b><small>۱۸ محصول</small></a>
+        <a href="#shop"><span class="cat-icon watch-icon"></span><b>Watch</b><small>۹ محصول</small></a>
+        <a href="#shop"><span class="cat-icon pods-icon"></span><b>AirPods</b><small>۷ محصول</small></a>
+      </section>
+
+      <section class="products-section wrap" id="shop">
+        <div class="section-heading"><div><p class="eyebrow">CURATED FOR YOU</p><h2>محبوب‌ترین انتخاب‌ها</h2></div><a class="text-link" href="#shop">همه محصولات <b>←</b></a></div>
+        <div class="products">
+          <article class="product-card featured"><span class="badge">پیشنهاد ویژه</span><div class="product-visual iphone-product"><div class="mini-phone"></div></div><div class="product-meta"><p>iPhone 16 Pro Max</p><small>۲۵۶ گیگابایت · تیتانیوم مشکی</small><strong>۱۵۴,۹۰۰,۰۰۰ <small>تومان</small></strong></div><button aria-label="افزودن آیفون به سبد">+</button></article>
+          <article class="product-card"><div class="product-visual mac-product"><div></div></div><div class="product-meta"><p>MacBook Air M3</p><small>۱۳ اینچ · ۸GB · ۲۵۶GB</small><strong>۷۸,۵۰۰,۰۰۰ <small>تومان</small></strong></div><button aria-label="افزودن مک‌بوک به سبد">+</button></article>
+          <article class="product-card"><div class="product-visual watch-product"><div></div></div><div class="product-meta"><p>Apple Watch S10</p><small>۴۶ میلی‌متر · GPS</small><strong>۳۲,۹۰۰,۰۰۰ <small>تومان</small></strong></div><button aria-label="افزودن اپل واچ به سبد">+</button></article>
+        </div>
+      </section>
+
+      <section class="installment wrap" id="installments">
+        <div class="installment-copy"><p class="eyebrow">FLEXIBLE PAYMENTS</p><h2>همین امروز انتخاب کنید.<br>آرام و <em>شفاف</em> پرداخت کنید.</h2><p>شرایط اقساطی را در چند ثانیه محاسبه کنید؛ بدون ابهام، با امکان ثبت درخواست آنلاین.</p><a class="button button-dark" href="#calculator">محاسبه اقساط <b>←</b></a></div>
+        <form class="calculator" id="calculator"><div class="calc-top"><span>برآورد خرید اقساطی</span><small>قابل تنظیم</small></div><label>قیمت محصول <output id="price-output">۱۵۰,۰۰۰,۰۰۰ تومان</output><input id="price" type="range" min="50000000" max="300000000" value="150000000" step="10000000" /></label><div class="calc-row"><label>پیش‌پرداخت <select id="down"><option value="0.4">۴۰٪</option><option value="0.5">۵۰٪</option><option value="0.6">۶۰٪</option></select></label><label>مدت بازپرداخت <select id="months"><option value="12">۱۲ ماه</option><option value="18">۱۸ ماه</option><option value="24">۲۴ ماه</option></select></label></div><div class="monthly"><span>مبلغ تقریبی هر قسط</span><strong id="monthly">۹,۲۵۰,۰۰۰ <small>تومان</small></strong></div><button type="button" class="button button-light">ثبت درخواست</button></form>
+      </section>
+
+      <section class="trade wrap" id="trade"><div class="trade-art"><div class="trade-phone old-phone">12</div><div class="trade-arrow">←</div><div class="trade-phone new-phone">16</div></div><div><p class="eyebrow">APPLE TRADE IN</p><h2>گوشی قبلی‌تان،<br>شروع انتخاب بعدی شماست.</h2><p>وضعیت دستگاه خود را وارد کنید، قیمت منصفانه دریافت کنید و مابه‌التفاوت را برای محصول جدید بپردازید.</p><a class="text-link" href="#trade">ارزیابی گوشی من <b>←</b></a></div></section>
+
+      <section class="guide wrap" id="guide"><div><p class="eyebrow">APPLE JOURNAL</p><h2>دانستنی‌های اپل</h2></div><div class="guide-cards"><a href="#guide"><span class="article-art art-one"></span><small>راهنمای خرید</small><b>کدام آیفون برای شما ساخته شده؟</b></a><a href="#guide"><span class="article-art art-two"></span><small>مقایسه</small><b>تفاوت AirPods Pro 2 و AirPods 4</b></a><a href="#guide"><span class="article-art art-three"></span><small>آموزش</small><b>همه‌چیز درباره سلامت باتری آیفون</b></a></div></section>
+    </main>
+    <footer><div class="wrap footer-inner"><a class="brand" href="#home"><span class="brand-mark">●</span> اَپل‌خانه</a><p>تجربهٔ بهتر محصولات اپل، از ۱۳۹۵</p><span>© ۱۴۰۵</span></div></footer>
+    <script src="app.js"></script>
+  </body>
+</html>
