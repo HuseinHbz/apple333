@@ -1,0 +1,7 @@
+# Next Codex Task — Do Not Implement in This Audit
+
+Use this exact task in a new implementation turn:
+
+> You are working on Apple333 Enterprise Platform. Work only on `feature/phase-05-storefront-production`; do not commit to main/master. Preserve all approved static storefront files and do not modify `server.py`, SQLite data, or `db/phase-3-inventory.sql` in this task. Create a Next.js App Router foundation using TypeScript strict mode under `src/`, following the approved repository structure. Add `package.json`, `tsconfig.json`, `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/api/health/route.ts`, shared `src/components/ui`, ESLint/Prettier, Vitest, React Testing Library, Playwright configuration, `.env.example`, Docker development files, GitHub Actions CI, and a migration report at `docs/migration-reports/phase-00-prisma-baseline.md`. Do not install packages unless approval is available. Do not add Prisma migrations or alter any database schema; only add a reviewed Prisma schema proposal if it contains no migration command. Add unit, integration and E2E smoke-test skeletons. Run only safe build/typecheck/lint/test commands that are available. Report every created file and preserve visual parity with the existing static storefront.
+
+Acceptance criteria: strict TypeScript enabled; health route returns typed JSON; no production feature is removed; no database mutation; tests/configurations exist; CI runs typecheck/lint/test; no secrets are committed.
