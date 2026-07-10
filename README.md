@@ -22,4 +22,4 @@
 & 'C:\Users\Husein_hbz\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' server.py
 ```
 
-سپس [http://localhost:8080/platform.html](http://localhost:8080/platform.html) و نمونهٔ گزارش API در [http://localhost:8080/api/v1/inventory/reports](http://localhost:8080/api/v1/inventory/reports) در دسترس است. دیتابیس محلی SQLite در `data/applekhane.db` در اولین اجرا ساخته می‌شود.
+سپس [http://localhost:8080/platform.html](http://localhost:8080/platform.html)، [Checkout مشتری](http://localhost:8080/checkout.html) و نمونهٔ گزارش API در [http://localhost:8080/api/v1/inventory/reports](http://localhost:8080/api/v1/inventory/reports) در دسترس است. دیتابیس محلی SQLite در `data/applekhane.db` در اولین اجرا ساخته می‌شود.
