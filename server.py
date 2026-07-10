@@ -150,7 +150,7 @@ class APIError(Exception):
 
 class Handler(SimpleHTTPRequestHandler):
     def translate_path(self, path: str) -> str:
-        return str(ROOT / path.lstrip("/"))
+        return str(ROOT / urlparse(path).path.lstrip("/"))
 
     def log_message(self, fmt: str, *args) -> None:  # avoid leaking request data
         print(f"[{now()}] {self.address_string()} {fmt % args}")
