@@ -11,5 +11,6 @@ credentials/
 node_modules/
 .pnpm-store/
 .next/
+*.tsbuildinfo
 playwright-report/
 test-results/
