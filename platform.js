@@ -1,29 +1,141 @@
-const state = {
-  user: JSON.parse(localStorage.getItem('applekhane-user') || '{"name":"مدیر سیستم","role":"Admin"}'),
-  products: [{name:'iPhone 16 Pro Max',sku:'IPH16PM-256-BK',price:'۱۵۴,۹۰۰,۰۰۰',stock:12},{name:'MacBook Air M3',sku:'MBA-M3-13-256',price:'۷۸,۵۰۰,۰۰۰',stock:7},{name:'Apple Watch Series 10',sku:'AWS10-46-GPS',price:'۳۲,۹۰۰,۰۰۰',stock:18}],
-  requests: [{id:'INS-1042',name:'مریم احمدی',amount:'۹۰,۰۰۰,۰۰۰',status:'در انتظار بررسی'},{id:'TRD-0881',name:'امیررضا نادری',amount:'۷۲,۵۰۰,۰۰۰',status:'ارزیابی اولیه'}]
-};
-const root = document.querySelector('#view-root'); const title = document.querySelector('#page-title'); const kicker = document.querySelector('#page-kicker');
-const money = n => new Intl.NumberFormat('fa-IR').format(n);
-function toast(message){const t=document.querySelector('#toast');t.textContent=message;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
-function status(text){const cls=text.includes('تأیید')||text.includes('تکمیل')?'success':text.includes('انتظار')||text.includes('ارزیابی')?'pending':'info';return `<span class="status ${cls}">${text}</span>`}
-function setHead(k,t){kicker.textContent=k;title.textContent=t;document.querySelectorAll('#side-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===currentView))}
-function panel(title,body,action=''){return `<article class="panel"><div class="panel-heading"><h3>${title}</h3>${action}</div>${body}</article>`}
-function table(headers, rows){return `<div class="table-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`}
-function dashboard(){setHead('OVERVIEW','صبح بخیر، حسین');root.innerHTML=`<div class="dashboard"><p class="date-line">پنج‌شنبه، ۱۹ تیر ۱۴۰۵ · نمای کلی چهار شعبه</p><div class="metrics"><article class="metric"><div class="metric-title">فروش امروز <b>+۱۸٪</b></div><h2>۴۸۳,۶۰۰,۰۰۰</h2><p>تومان · نسبت به دیروز</p></article><article class="metric"><div class="metric-title">سفارش‌های جدید <b>+۱۲٪</b></div><h2>۳۶ <small>سفارش</small></h2><p>۸ مورد نیازمند پیگیری</p></article><article class="metric"><div class="metric-title">درخواست اقساط <b class="warn">۱۲ مورد</b></div><h2>۸</h2><p>در انتظار بررسی مالی</p></article><article class="metric"><div class="metric-title">هشدار موجودی <b class="warn">۲ SKU</b></div><h2>۵</h2><p class="down">نیازمند تأمین یا انتقال</p></article></div><div class="grid-two">${panel('فروش هفت روز اخیر',`<div class="chart"><svg viewBox="0 0 600 200" preserveAspectRatio="none"><path d="M0,155 C45,145 58,82 110,120 S178,105 210,122 S276,30 320,75 S390,130 430,78 S505,90 600,18 L600,200 L0,200Z" fill="#d9ff5e" opacity=".6"/><path d="M0,155 C45,145 58,82 110,120 S178,105 210,122 S276,30 320,75 S390,130 430,78 S505,90 600,18" fill="none" stroke="#161616" stroke-width="2.5"/></svg></div><div class="chart-labels"><span>شنبه</span><span>یکشنبه</span><span>دوشنبه</span><span>سه‌شنبه</span><span>چهارشنبه</span><span>امروز</span></div>`,'<button class="link-button" data-go="insights">مشاهده گزارش ←</button>')}${panel('عملکرد شعب',branchRows())}</div><div class="table-panel">${panel('آخرین سفارش‌ها',table(['شماره','مشتری','مبلغ','کانال','وضعیت'],[['#A-2841','آوا قاسمی','۱۵۴,۹۰۰,۰۰۰','آنلاین',status('پرداخت شد')],['#A-2840','سامان رضایی','۳۲,۹۰۰,۰۰۰','شعبه ونک',status('در حال آماده‌سازی')],['#A-2839','سارا گودرزی','۷۸,۵۰۰,۰۰۰','آنلاین',status('ارسال شد')]].map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`),' <button class="link-button" data-go="orders">همه سفارش‌ها ←</button>')}</div></div>`}
-function branchRows(){return [['ونک','۴۸٪ هدف ماه','۲۲۱M',78],['پاسداران','۳۹٪ هدف ماه','۱۸۰M',62],['کوروش','۵۶٪ هدف ماه','۲۷۷M',89],['انبار مرکزی','سلامت موجودی','۴۲۱ SKU',94]].map((r,i)=>`<div class="branch-row"><span class="branch-icon">${['⌂','⌂','⌂','▣'][i]}</span><div><b>${r[0]}</b><small>${r[1]}</small></div><div class="progress"><i style="width:${r[3]}%"></i></div><strong>${r[2]}</strong></div>`).join('')}
-function catalog(){setHead('CATALOG','کالا و کاتالوگ');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>محصولات اپل</h2><p>مدیریت SKU، مشخصات، قیمت و نمایش در فروشگاه</p></div><button class="primary" data-modal="product">+ افزودن محصول</button></div><div class="filters"><select><option>همه دسته‌ها</option><option>iPhone</option><option>Mac</option></select><select><option>همه وضعیت‌ها</option><option>منتشر شده</option></select><input placeholder="جست‌وجوی نام یا SKU…" /></div>${panel('۳ محصول در کاتالوگ',table(['محصول','SKU','قیمت فروش','موجودی','وضعیت',''],state.products.map((p,i)=>`<tr><td><span class="product-thumb">${i===1?'M':'i'}</span> &nbsp;<b>${p.name}</b></td><td class="sku">${p.sku}</td><td>${p.price} تومان</td><td>${p.stock} واحد</td><td>${status('منتشر شده')}</td><td><button class="link-button" data-edit="${i}">ویرایش</button></td></tr>`)))}</section>`}
-function inventory(){setHead('INVENTORY','انبار و شعب');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>موجودی چهار شعبه</h2><p>رزرو، انتقال و رهگیری دستگاه‌ها با Serial یا IMEI</p></div><button class="primary" data-modal="transfer">+ انتقال بین شعب</button></div><div class="grid-two">${panel('وضعیت شعب',branchRows())}${panel('هشدارهای انبار',`<div class="data-row"><span class="product-thumb">i</span><div><b>iPhone 16 Pro 256GB</b><small>شعبه پاسداران · حداقل موجودی ۳</small></div><strong class="status pending">۱ واحد</strong></div><div class="data-row"><span class="product-thumb">M</span><div><b>MacBook Air M3 16GB</b><small>شعبه کوروش · بدون موجودی</small></div><strong class="status danger">۰ واحد</strong></div><button class="link-button" data-modal="transfer">ایجاد درخواست تأمین ←</button>`)}</div>${panel('آخرین جابه‌جایی‌ها',table(['شناسه','کالا','مبدأ','مقصد','وضعیت'],[['MOV-202','AirPods Pro 2','انبار مرکزی','ونک',status('تحویل شد')],['MOV-201','iPhone 16 Pro','پاسداران','کوروش',status('در مسیر')]].map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`)))}</section>`}
-function orders(){setHead('COMMERCE','سفارش‌ها');root.innerHTML=basicList('سفارش‌ها','تمام سفارش‌های آنلاین، حضوری و Click & Collect','+ سفارش جدید',['شماره','مشتری','محصول','مبلغ','پرداخت','تحویل'],[['A-2841','آوا قاسمی','iPhone 16 Pro Max','۱۵۴,۹۰۰,۰۰۰',status('پرداخت شد'),status('ارسال شد')],['A-2840','سامان رضایی','Apple Watch S10','۳۲,۹۰۰,۰۰۰',status('پرداخت شد'),status('آماده تحویل')],['A-2839','سارا گودرزی','MacBook Air M3','۷۸,۵۰۰,۰۰۰',status('اقساطی'),status('بررسی مدارک')]])}
-function installments(){setHead('FINANCE','اقساط و اعتبارسنجی');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>درخواست‌های خرید اقساطی</h2><p>محاسبه، بررسی مدارک، تأیید مالی و صدور قرارداد</p></div><button class="primary" data-modal="installment">+ درخواست جدید</button></div><div class="steps"><span class="active">ثبت درخواست</span><span>بررسی مدارک</span><span>تأیید مالی</span><span>قرارداد</span><span>تحویل کالا</span></div><div class="split"><article class="info-card quote"><h3>محاسبه‌گر سریع</h3><p>محصول ۱۵۰ میلیون · پیش‌پرداخت ۴۰٪ · ۱۲ ماه</p><strong>۹,۲۵۰,۰۰۰ تومان</strong><p>مبلغ تقریبی هر قسط با نرخ نمونه ۱۱٪</p><button class="primary" data-modal="installment">ثبت درخواست</button></article>${panel('صف بررسی امروز',state.requests.map(r=>`<div class="data-row"><span class="avatar">${r.name[0]}</span><div><b>${r.name}</b><small>${r.id} · ${r.amount} تومان</small></div><span>${status(r.status)}</span></div>`).join(''))}</div></section>`}
-function tradein(){setHead('TRADE-IN','تعویض و ارزیابی گوشی');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>ارزیابی Trade-in</h2><p>ثبت IMEI، سلامت دستگاه، قواعد قیمت و پیشنهاد قابل تأیید</p></div><button class="primary" data-modal="trade">+ ارزیابی جدید</button></div><div class="split"><article class="info-card quote"><h3>پیشنهاد قیمت امروز</h3><p>iPhone 13 Pro · ۲۵۶GB · سلامت باتری ۸۷٪</p><strong>۶۸,۴۰۰,۰۰۰ تومان</strong><p>بازهٔ خرید امن: ۶۵ تا ۷۱ میلیون تومان</p><button class="primary" data-modal="trade">ثبت ارزیابی</button></article>${panel('صف ارزیابی',`<div class="data-row"><span class="product-thumb">12</span><div><b>iPhone 12 Pro / 128GB</b><small>IMEI ثبت شده · شعبه ونک</small></div>${status('ارزیابی اولیه')}</div><div class="data-row"><span class="product-thumb">14</span><div><b>iPhone 14 / 128GB</b><small>نیازمند بررسی ظاهری</small></div>${status('در انتظار بررسی')}</div>`)}</div><div class="panel table-panel"><div class="panel-heading"><h3>چک‌لیست ارزیابی</h3></div><div class="steps"><span class="active">IMEI و مدل</span><span>باتری و قطعات</span><span>ظاهر و نمایشگر</span><span>Rule Engine</span><span>تأیید کارشناس</span></div></div></section>`}
-function customers(){setHead('CUSTOMERS','مشتریان و CRM');root.innerHTML=basicList('باشگاه مشتریان','پروفایل، آدرس‌ها، کیف پول، امتیاز و پیگیری‌ها','+ مشتری جدید',['مشتری','سطح','سفارش‌ها','اعتبار کیف پول','آخرین تعامل'],[['مریم احمدی','VIP','۱۲','۴,۵۰۰,۰۰۰','درخواست اقساط'],['سامان رضایی','نقره‌ای','۳','۰','خرید حضوری'],['آوا قاسمی','طلایی','۸','۱,۲۰۰,۰۰۰','ثبت سفارش']])}
-function insights(){setHead('INSIGHTS','گزارش و هوش قیمت');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>هوش کسب‌وکار</h2><p>گزارش فروش و موجودی، شاخص‌های شعب و موتور قیمت گوشی کارکرده</p></div><button class="primary" data-modal="price">+ محاسبه قیمت کارکرده</button></div><div class="metrics"><article class="metric"><div class="metric-title">حاشیه سود ماه</div><h2>۱۸.۴٪</h2><p>در محدودهٔ هدف</p></article><article class="metric"><div class="metric-title">میانگین فروش آیفون</div><h2>۱۲۱M</h2><p>تومان</p></article><article class="metric"><div class="metric-title">سلامت موجودی</div><h2>۹۴٪</h2><p>۴۲۱ SKU فعال</p></article><article class="metric"><div class="metric-title">تبدیل Trade-in</div><h2>۳۲٪</h2><p>+۵٪ ماهانه</p></article></div><div class="grid-two">${panel('روند فروش',`<div class="chart"><svg viewBox="0 0 600 200" preserveAspectRatio="none"><path d="M0,160 C85,140 95,110 150,130 S270,40 320,89 S430,80 490,60 S540,40 600,28" fill="none" stroke="#171717" stroke-width="2.5"/></svg></div>`)}${panel('منابع قیمت',`<div class="integration"><div><b>قیمت مرجع جهانی</b><small>Adapter آماده · نیازمند API</small></div><span class="tag setup">نیازمند تنظیم</span></div><div class="integration"><div><b>نرخ ارز</b><small>آخرین همگام‌سازی: نمونه</small></div><span class="tag ready">آماده اتصال</span></div><div class="integration"><div><b>بازار ایران</b><small>ورود دستی یا منبع مجاز</small></div><span class="tag setup">نیازمند تنظیم</span></div>`)}</div></section>`}
-function content(){setHead('GROWTH','محتوا و بازاریابی');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>محتوا، SEO و کمپین</h2><p>دانستنی‌های اپل، صفحات فرود، کوپن و ارتباط با مشتری</p></div><button class="primary" data-modal="content">+ محتوای جدید</button></div><div class="split">${panel('محتوای منتشرشده',`<div class="data-row"><div><b>کدام آیفون برای شما ساخته شده؟</b><small>راهنمای خرید · منتشر شده</small></div>${status('منتشر شد')}</div><div class="data-row"><div><b>تفاوت AirPods Pro 2 و AirPods 4</b><small>مقایسه · پیش‌نویس</small></div>${status('پیش‌نویس')}</div>`)}${panel('کمپین‌ها',`<div class="data-row"><div><b>بازگشت به مدرسه</b><small>SMS + صفحهٔ فرود · ۴۲٪ بودجه مصرف شد</small></div>${status('فعال')}</div><div class="data-row"><div><b>اطلاع‌رسانی کاهش قیمت</b><small>Automation · ۳۸ کاربر</small></div>${status('فعال')}</div>`)}</div></section>`}
-function support(){setHead('SERVICE','پشتیبانی و خدمات پس از فروش');root.innerHTML=basicList('مرکز خدمات','تیکت، تعمیرات، گارانتی و رهگیری درخواست‌ها','+ تیکت جدید',['شماره','مشتری','موضوع','کانال','SLA','وضعیت'],[['T-1892','امیررضا نادری','بررسی گارانتی AirPods','واتس‌اپ','۳ ساعت',status('باز')],['T-1891','الهام اکبری','رهگیری تعمیرات','تلفن','۱ ساعت',status('در حال پیگیری')],['T-1890','آوا قاسمی','سؤال ارسال','سایت','تکمیل',status('بسته شد')]])}
-function settings(){setHead('SYSTEM','تنظیمات و امنیت');root.innerHTML=`<section class="section"><div class="section-intro"><div><h2>سیستم، نقش‌ها و اتصال‌ها</h2><p>پیکربندی مجوزها، اعلان‌ها، حسابرسی و سرویس‌های خارجی</p></div><button class="primary" data-modal="role">+ نقش جدید</button></div><div class="split">${panel('نقش‌های فعال', ['Admin','Manager','Branch Manager','Sales','Finance','Warehouse','Support','Customer'].map((x,i)=>`<div class="integration"><div><b>${x}</b><small>${i===0?'دسترسی کامل':'مجوزهای حداقلی قابل تعریف'}</small></div><span class="tag ready">فعال</span></div>`).join(''))}${panel('اتصال‌ها',`<div class="integration"><div><b>پیامک و OTP</b><small>نیازمند انتخاب تأمین‌کننده و کلید API</small></div><span class="tag setup">تنظیم نشده</span></div><div class="integration"><div><b>پرداخت آنلاین</b><small>نیازمند قرارداد درگاه</small></div><span class="tag setup">تنظیم نشده</span></div><div class="integration"><div><b>ثبت رویداد و Audit Log</b><small>فعال در نسخهٔ سرور</small></div><span class="tag ready">طراحی شده</span></div>`)}</div></section>`}
-function basicList(h,d,btn,heads,values){setHead('OPERATIONS',h);return `<section class="section"><div class="section-intro"><div><h2>${h}</h2><p>${d}</p></div><button class="primary" data-modal="generic">${btn}</button></div>${panel(h,table(heads,values.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`)))}</section>`}
-const views={dashboard,catalog,inventory,orders,installments,tradein,customers,insights,content,support,settings}; let currentView='dashboard';
-function render(view){currentView=view;views[view]();document.querySelector('.sidebar').classList.remove('open')}
-function dialog(type){const templates={product:['افزودن محصول','نام محصول، SKU و قیمت اولیه را وارد کنید.'],transfer:['انتقال بین شعب','کالا، شعبهٔ مبدأ، مقصد و تعداد را انتخاب کنید.'],installment:['درخواست اقساط','در نسخهٔ سرور، مدارک و اعتبارسنجی نیز به این درخواست پیوست می‌شوند.'],trade:['ارزیابی Trade-in','IMEI، مدل و سلامت باتری را ثبت کنید تا پیشنهاد اولیه ساخته شود.'],price:['محاسبهٔ گوشی کارکرده','قیمت پیشنهادی باید پیش از ارسال برای مشتری به تأیید کارشناس برسد.'],content:['ایجاد محتوا','مقاله، صفحهٔ فرود یا کمپین جدید ایجاد کنید.'],role:['ایجاد نقش','مجوزهای نقش جدید را بر اساس حداقل دسترسی لازم تعریف کنید.'],generic:['عملیات جدید','جزئیات عملیات را برای ثبت وارد کنید.']};const [h,d]=templates[type]||templates.generic;document.querySelector('#dialog-content').innerHTML=`<h2 class="dialog-title">${h}</h2><p style="font-size:11px;line-height:1.9;color:#777">${d}</p><div class="form-grid"><label>عنوان / مدل<input required placeholder="مثلاً iPhone 16 Pro" /></label><label>شعبه<select><option>ونک</option><option>پاسداران</option><option>کوروش</option><option>انبار مرکزی</option></select></label></div><label style="display:block;margin-top:12px;font-size:11px">یادداشت<textarea rows="3" placeholder="توضیحات تکمیلی"></textarea></label><button class="primary" style="margin-top:18px" value="default">ثبت پیش‌نویس</button>`;document.querySelector('#action-dialog').showModal()}
-document.querySelector('#side-nav').addEventListener('click',e=>{if(e.target.dataset.view)render(e.target.dataset.view)});document.addEventListener('click',e=>{if(e.target.dataset.go)render(e.target.dataset.go);if(e.target.dataset.modal)dialog(e.target.dataset.modal);if(e.target.id==='new-action')dialog('generic');if(e.target.id==='notifications')toast('۳ اعلان جدید دارید');if(e.target.id==='logout'){localStorage.removeItem('applekhane-user');toast('از پنل خارج شدید')}});document.querySelector('#action-dialog').addEventListener('close',()=>{if(document.querySelector('#action-dialog').returnValue==='default')toast('پیش‌نویس با موفقیت ثبت شد')});document.querySelector('#mobile-menu').addEventListener('click',()=>document.querySelector('.sidebar').classList.toggle('open'));document.querySelector('#user-name').textContent=state.user.name;document.querySelector('#user-role').textContent=state.user.role;render('dashboard');
+const root = document.querySelector('#view-root');
+const title = document.querySelector('#page-title');
+const kicker = document.querySelector('#page-kicker');
+const dialogElement = document.querySelector('#action-dialog');
+const number = new Intl.NumberFormat('fa-IR');
+let currentView = 'dashboard';
+
+const branches = [
+  ['ونک', 'b-vanak', '۲۲۱M', 78], ['پاسداران', 'b-pasdaran', '۱۸۰M', 62],
+  ['کوروش', 'b-koorosh', '۲۷۷M', 89], ['انبار مرکزی', null, '۴۲۱ SKU', 94],
+];
+
+function toast(message) {
+  const element = document.querySelector('#toast');
+  element.textContent = message;
+  element.classList.add('show');
+  setTimeout(() => element.classList.remove('show'), 2600);
+}
+
+function status(value) {
+  const kind = /تأیید|فعال|تحویل|منتشر/.test(value) ? 'success' : /انتظار|ارزیابی|مسیر/.test(value) ? 'pending' : 'info';
+  return `<span class="status ${kind}">${value}</span>`;
+}
+
+function panel(heading, body, action = '') {
+  return `<article class="panel"><div class="panel-heading"><h3>${heading}</h3>${action}</div>${body}</article>`;
+}
+
+function table(headers, rows) {
+  return `<div class="table-wrap"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
+function setHead(section, heading) {
+  kicker.textContent = section;
+  title.textContent = heading;
+  document.querySelectorAll('#side-nav button').forEach((button) => button.classList.toggle('active', button.dataset.view === currentView));
+}
+
+function branchRows(reportBranches) {
+  const data = reportBranches?.map((branch) => [branch.name.replace('انبار شعبه ', ''), null, number.format(branch.on_hand), Math.min(100, branch.on_hand * 25)]) || branches;
+  return data.map(([name, id, value, progress]) => `<div class="branch-row"><span class="branch-icon">${id ? '⌂' : '▣'}</span><div><b>${name}</b><small>${id ? 'موجودی و فروش شعبه' : 'موقعیت مرکزی'}</small></div><div class="progress"><i style="width:${progress}%"></i></div><strong>${value}</strong></div>`).join('');
+}
+
+function dashboard() {
+  setHead('OVERVIEW', 'صبح بخیر، حسین');
+  const orderRows = [
+    ['#A-2841', 'آوا قاسمی', '۱۵۴,۹۰۰,۰۰۰', 'آنلاین', status('پرداخت شد')],
+    ['#A-2840', 'سامان رضایی', '۳۲,۹۰۰,۰۰۰', 'ونک', status('در حال آماده‌سازی')],
+    ['#A-2839', 'سارا گودرزی', '۷۸,۵۰۰,۰۰۰', 'آنلاین', status('ارسال شد')],
+  ];
+  root.innerHTML = `<section class="dashboard"><p class="date-line">نمای کلی فروشگاه و چهار شعبه</p><div class="metrics"><article class="metric"><div class="metric-title">فروش امروز <b>+۱۸٪</b></div><h2>۴۸۳M</h2><p>تومان · نسبت به دیروز</p></article><article class="metric"><div class="metric-title">سفارش‌های جدید <b>+۱۲٪</b></div><h2>۳۶</h2><p>۸ مورد نیازمند پیگیری</p></article><article class="metric"><div class="metric-title">درخواست اقساط <b class="warn">۱۲ مورد</b></div><h2>۸</h2><p>در انتظار بررسی مالی</p></article><article class="metric"><div class="metric-title">هشدار موجودی <b class="warn">۲ SKU</b></div><h2>۵</h2><p class="down">نیازمند تأمین یا انتقال</p></article></div><div class="grid-two">${panel('فروش هفت روز اخیر', '<div class="chart"><svg viewBox="0 0 600 200" preserveAspectRatio="none"><path d="M0,155 C45,145 58,82 110,120 S178,105 210,122 S276,30 320,75 S390,130 430,78 S505,90 600,18" fill="none" stroke="#161616" stroke-width="2.5"/></svg></div><div class="chart-labels"><span>شنبه</span><span>یکشنبه</span><span>دوشنبه</span><span>سه‌شنبه</span><span>چهارشنبه</span><span>امروز</span></div>', '<button class="link-button" data-go="insights">مشاهده گزارش ←</button>')}${panel('عملکرد شعب', branchRows())}</div><div class="table-panel">${panel('آخرین سفارش‌ها', table(['شماره', 'مشتری', 'مبلغ', 'کانال', 'وضعیت'], orderRows), '<button class="link-button" data-go="orders">همه سفارش‌ها ←</button>')}</div></section>`;
+}
+
+function inventory() {
+  setHead('INVENTORY', 'مرکز عملیات انبار');
+  const auditRows = [
+    ['۱۰:۴۲', 'دریافت و QC', 'iPhone 16 Pro · …۸۲۱۴', 'مینا رضایی', 'انبار مرکزی', status('تأیید شد')],
+    ['۱۰:۲۶', 'ارسال انتقال', 'AirPods Pro 2 · …۴۰۳۹', 'علی کریمی', 'پاسداران', status('در مسیر')],
+    ['۰۹:۵۸', 'رزرو آنلاین', 'iPhone 16 Pro Max · …۲۷۶۱', 'سیستم', 'ونک', status('فعال')],
+  ];
+  root.innerHTML = `<section class="section inventory-command"><div class="section-intro"><div><h2>موجودی، IMEI و شعب</h2><p>داده‌ها هنگام اجرای سرور محلی از API فاز ۳ خوانده می‌شوند.</p></div><div class="button-row"><button class="primary" data-modal="receiving">+ دریافت کالا</button><button class="primary" data-modal="transfer">+ انتقال بین شعب</button></div></div><div class="filters"><input id="imei-search" placeholder="IMEI، Serial یا بارکد دستگاه…" /><button class="primary" data-action="imei-search">جست‌وجو</button><button class="link-button" data-modal="scan">اسکن با دوربین</button></div><div id="imei-result"></div><div class="metrics"><article class="metric"><div class="metric-title">موجودی قابل فروش</div><h2 id="available-stock">۴۲۱</h2><p>در ۵ موقعیت فعال</p></article><article class="metric"><div class="metric-title">ارزش موجودی</div><h2>۱۸.۶B</h2><p>تومان · ارزش خرید</p></article><article class="metric"><div class="metric-title">رزروهای فعال</div><h2 id="reserved-stock">۱۲</h2><p>رزروهای دارای زمان پایان</p></article><article class="metric"><div class="metric-title">کمبود موجودی</div><h2 id="low-stock">۵</h2><p>SKU نیازمند اقدام</p></article></div><div class="grid-two"><div id="branch-panel">${panel('وضعیت شعب و انبار مرکزی', branchRows())}</div>${panel('صف عملیات انبار', '<div class="data-row"><span class="branch-icon">↓</span><div><b>دریافت کالا</b><small>اسکن IMEI، QC و ورود به انبار</small></div></div><div class="data-row"><span class="branch-icon">→</span><div><b>انتقال بین شعب</b><small>درخواست، تأیید، ارسال و دریافت</small></div></div><div class="data-row"><span class="branch-icon">◷</span><div><b>رزرو</b><small>آزادسازی خودکار با timeout</small></div></div>', '<button class="link-button" data-modal="audit">شروع شمارش موجودی ←</button>')}</div>${panel('آخرین رخدادهای قابل ممیزی', table(['زمان', 'عملیات', 'دستگاه / کالا', 'کاربر', 'محل', 'وضعیت'], auditRows), '<button class="link-button" data-modal="audit">Audit Log ←</button>')}</section>`;
+  void hydrateInventory();
+}
+
+async function hydrateInventory() {
+  try {
+    const response = await fetch('/api/v1/inventory/reports');
+    if (!response.ok || currentView !== 'inventory') return;
+    const report = await response.json();
+    document.querySelector('#available-stock').textContent = number.format(report.totals.on_hand - report.totals.reserved);
+    document.querySelector('#reserved-stock').textContent = number.format(report.totals.reserved);
+    document.querySelector('#low-stock').textContent = number.format(report.lowStock.length);
+    document.querySelector('#branch-panel').innerHTML = panel('وضعیت شعب و انبار مرکزی', branchRows(report.branches));
+  } catch (_) {
+    // The static preview intentionally works before the local API is started.
+  }
+}
+
+function simpleView(view) {
+  const content = {
+    catalog: ['کالا و کاتالوگ', 'مدیریت SKU، variant، مشخصات و قیمت‌های محصول'],
+    orders: ['سفارش‌ها', 'پیگیری سفارش آنلاین، پرداخت و تحویل شعبه'],
+    installments: ['اقساط و اعتبارسنجی', 'درخواست، مدارک، تأیید مالی و قرارداد'],
+    tradein: ['تعویض گوشی', 'ارزیابی IMEI، سلامت دستگاه و پیشنهاد قیمت'],
+    customers: ['مشتریان و CRM', 'پروفایل، وفاداری، کیف پول و پیگیری‌ها'],
+    insights: ['گزارش و هوش قیمت', 'فروش، حاشیه سود، موجودی و قیمت کارکرده'],
+    content: ['محتوا و بازاریابی', 'مقالات، SEO، کمپین و صفحات فرود'],
+    support: ['پشتیبانی و خدمات', 'تیکت، گارانتی، تعمیرات و SLA'],
+    settings: ['تنظیمات و امنیت', 'نقش‌ها، providerها، لاگ و policy'],
+  }[view];
+  setHead('OPERATIONS', content[0]);
+  root.innerHTML = `<section class="section"><div class="section-intro"><div><h2>${content[0]}</h2><p>${content[1]}</p></div><button class="primary" data-modal="generic">+ عملیات جدید</button></div>${panel('وضعیت ماژول', '<div class="empty">این بخش در نمونهٔ عملیاتی آمادهٔ اتصال به API مربوطه است.</div>')}</section>`;
+}
+
+const views = { dashboard, inventory, catalog: () => simpleView('catalog'), orders: () => simpleView('orders'), installments: () => simpleView('installments'), tradein: () => simpleView('tradein'), customers: () => simpleView('customers'), insights: () => simpleView('insights'), content: () => simpleView('content'), support: () => simpleView('support'), settings: () => simpleView('settings') };
+
+function render(view) {
+  currentView = view;
+  views[view]();
+  document.querySelector('.sidebar').classList.remove('open');
+}
+
+function openDialog(kind) {
+  const descriptions = {
+    receiving: ['دریافت کالا', 'در نسخهٔ API، دریافت با IMEI/Serial یکتا، QC و ثبت حرکت موجودی انجام می‌شود.'],
+    transfer: ['انتقال بین شعب', 'جریان انتقال: درخواست، تأیید، ارسال با اسکن و دریافت در مقصد.'],
+    scan: ['اسکن دستگاه', 'اسکنر USB یا دوربین باید مقدار IMEI/Serial را به فرم جست‌وجو وارد کند.'],
+    audit: ['شمارش و Audit', 'هر تغییر موجودی، IMEI و قیمت به‌صورت رویداد ممیزی ثبت می‌شود.'],
+    generic: ['عملیات جدید', 'جزئیات عملیات را ثبت کنید.'],
+  }[kind] || ['عملیات جدید', 'جزئیات را ثبت کنید.'];
+  document.querySelector('#dialog-content').innerHTML = `<h2 class="dialog-title">${descriptions[0]}</h2><p style="font-size:11px;line-height:1.9;color:#777">${descriptions[1]}</p><div class="form-grid"><label>عنوان / دستگاه<input placeholder="مثلاً iPhone 16 Pro" /></label><label>شعبه<select><option>ونک</option><option>پاسداران</option><option>کوروش</option><option>انبار مرکزی</option></select></label></div><label style="display:block;margin-top:12px;font-size:11px">یادداشت<textarea rows="3" placeholder="توضیحات تکمیلی"></textarea></label><button class="primary" style="margin-top:18px" value="default">ثبت پیش‌نویس</button>`;
+  dialogElement.showModal();
+}
+
+async function searchDevice() {
+  const input = document.querySelector('#imei-search');
+  const target = document.querySelector('#imei-result');
+  const value = input?.value.trim();
+  if (!value) return toast('IMEI یا Serial را وارد کنید');
+  try {
+    const response = await fetch(`/api/v1/devices/${encodeURIComponent(value)}`);
+    if (!response.ok) throw new Error();
+    const device = await response.json();
+    target.innerHTML = `<div class="panel" style="margin-bottom:13px"><div class="data-row"><span class="product-thumb">i</span><div><b>${device.display_name}</b><small>${device.imei_1} · ${device.serial_number} · ${device.warehouse}</small></div>${status(device.status)}</div></div>`;
+  } catch (_) {
+    target.innerHTML = '<div class="panel" style="margin-bottom:13px"><div class="empty">دستگاه پیدا نشد یا API محلی اجرا نشده است.</div></div>';
+  }
+}
+
+document.querySelector('#side-nav').addEventListener('click', (event) => { if (event.target.dataset.view) render(event.target.dataset.view); });
+document.addEventListener('click', (event) => {
+  if (event.target.dataset.go) render(event.target.dataset.go);
+  if (event.target.dataset.modal) openDialog(event.target.dataset.modal);
+  if (event.target.dataset.action === 'imei-search') void searchDevice();
+  if (event.target.id === 'new-action') openDialog('generic');
+  if (event.target.id === 'notifications') toast('۳ اعلان جدید دارید');
+  if (event.target.id === 'logout') toast('از پنل خارج شدید');
+});
+dialogElement.addEventListener('close', () => { if (dialogElement.returnValue === 'default') toast('پیش‌نویس با موفقیت ثبت شد'); });
+document.querySelector('#mobile-menu').addEventListener('click', () => document.querySelector('.sidebar').classList.toggle('open'));
+render('dashboard');
