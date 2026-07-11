@@ -1,77 +1,34 @@
-# Phase 03 — Testing Report and Acceptance Matrix
+# Phase 03 — Testing Report
 
-## Reporting boundary
+**Execution date:** 2026-07-11
+**Branch:** `feature/phase-03-admin-platform`
 
-This file records the test requirements and evidence standard for Phase 03. It
-does not mark a Phase 03 test as passed unless a command result is recorded
-against the final branch state. Phase 02.1 results cannot be reused as evidence
-for newly added admin behavior.
-
-## Required quality gates
-
-| Gate | Command / method | Required evidence |
+| Gate | Result | Evidence |
 | --- | --- | --- |
-| TypeScript | `pnpm typecheck` | Strict type check passes |
-| Lint | `pnpm lint` | No suppressed/disabled rule used to obtain a pass |
-| Build | `pnpm build` | Production build completes |
-| Unit | `pnpm test` or targeted Vitest command | Permission, role service, user service, and validators |
-| Integration | `pnpm test:integration` plus admin route suites | Authentication, authorization, validation, service/repository behavior |
-| E2E | `pnpm test:e2e` | Protected admin access and key governed flows |
-| Prisma | `pnpm prisma:validate` and `pnpm prisma:generate` | Schema/client validation only; no migration required |
+| Prisma schema | Passed | `pnpm prisma:validate` with a process-local, non-secret validation URL |
+| Prisma Client | Passed | `pnpm prisma:generate`; no migration or database write ran |
+| TypeScript | Passed | `pnpm typecheck` |
+| Lint | Passed | `pnpm lint` |
+| Production build | Passed | `pnpm build`; 27 static pages generated and all App Router routes compiled |
+| Unit | Passed | 7 files / 17 tests via `pnpm exec vitest run tests/unit` |
+| Integration | Passed | 2 files / 4 tests via `pnpm test:integration` |
+| Aggregate Vitest | Passed | 9 files / 21 tests via `pnpm test` |
+| E2E | Passed | 2 Playwright tests via `pnpm test:e2e`: legacy smoke and unauthenticated admin protection |
 
-## Required test scenarios
+## Covered behavior
 
-### Unit
+- Permission allow/deny, any/all semantics, branch mismatch denial, and unknown permission rejection.
+- System roles cannot be mutated; custom-role rules remain testable as a pure service invariant.
+- Zod validation for role codes, settings, notifications, media paths, and upload signatures.
+- Server-side user/audit list query validation, including allowed status values and bounded date ranges.
+- Privilege-delegation denial: a role editor cannot assign a permission it does not hold.
+- Unauthenticated admin API requests return a safe 401 envelope and no-store response.
+- Cookie-authenticated mutations require same-origin checks.
+- The unauthenticated `/admin` route redirects to the login screen, and direct admin API access is blocked.
+- Existing public home/health smoke remains green.
 
-- Permission allow/deny behavior and unknown permission handling.
-- Branch/record-scope policy where the actor model supports it.
-- Protected system-role and self-lockout invariants.
-- User status transitions and role-assignment validation.
-- Zod validation for pagination, filters, IDs, payloads, and media metadata.
-- Redaction behavior for sensitive setting values and audit metadata.
+## Environment limitation
 
-### Integration
+Docker is not available in this workspace, so a database-backed authenticated login/role-assignment E2E flow was not executed. The test suite does not use a caller-controlled identity header or production database. A reviewed staging migration plus disposable PostgreSQL fixtures are required before claiming database-backed workflow coverage.
 
-- Unauthenticated admin route access is rejected without protected data.
-- Authenticated but unauthorized actors receive a safe denial.
-- Authorized list/detail requests obey scope and use paginated DTOs.
-- Invalid body/query/path input is rejected before service execution.
-- Role/settings/media/user mutations create an appropriate audit event.
-- Audit logs cannot be mutated through the viewer API.
-
-### E2E smoke
-
-- An unauthenticated visit to `/admin` is blocked or redirected.
-- An authorized actor reaches the dashboard shell.
-- A user-management flow preserves validation and shows result/error states.
-- A role assignment cannot exceed the actor's authority.
-- No existing storefront smoke path regresses.
-
-## Known environment considerations
-
-- Playwright requires a compatible local Chromium binary. Browser installation
-  is an environment prerequisite, not a replacement for executing the E2E
-  suite.
-- Integration tests that use Prisma need an isolated PostgreSQL test database
-  and deterministic fixtures; never point them at production.
-- Tests must not depend on a caller-controlled identity header, mock business
-  metrics, real external SMS/email services, or production storage.
-- The historic Phase 02.1 report contains its own command evidence. Its E2E
-  status may change only when the command is rerun and recorded; consult that
-  report and CI rather than assuming a local browser is available.
-
-## Result table (to be completed from final execution)
-
-| Gate | Status | Evidence / command output |
-| --- | --- | --- |
-| Typecheck | Not assessed for Phase 03 | Pending final branch execution |
-| Lint | Not assessed for Phase 03 | Pending final branch execution |
-| Build | Not assessed for Phase 03 | Pending final branch execution |
-| Unit | Not assessed for Phase 03 | Pending final branch execution |
-| Integration | Not assessed for Phase 03 | Pending final branch execution |
-| E2E | Not assessed for Phase 03 | Pending final branch execution |
-| Prisma validation/generation | Not assessed for Phase 03 | Pending final branch execution |
-
-Any failure must remain visible in a quality-gate report with command, result,
-error summary, root cause, and recommended/implemented fix. Tests must not be
-skipped or weakened to improve the score.
+No test was skipped or disabled. The initial jsdom `File.arrayBuffer` fixture incompatibility and media storage-key extension validation failure were corrected and rerun successfully; details are in [quality-gate-report.md](quality-gate-report.md).

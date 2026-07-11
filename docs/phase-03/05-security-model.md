@@ -36,6 +36,9 @@ state must never be treated as administrative access.
 - Check branch/business ownership before retrieving or modifying a record.
 - Do not use a user-supplied `userId`, `branchId`, or role code as proof of
   entitlement.
+- Prevent privilege delegation: role creation, permission replacement, and
+  user-role assignment must not grant a permission the acting administrator
+  does not already possess. Reserve system-role codes for the bootstrap path.
 - Keep lists and counts scoped, not just detail endpoints.
 - Return safe error responses that do not disclose protected record existence.
 

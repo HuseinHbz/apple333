@@ -1,56 +1,30 @@
 # Phase 03 — Implementation Report
 
-## Status declaration
+## Delivered foundation
 
-This document begins as the Phase 03 implementation ledger. At the time this
-documentation set was created, it intentionally makes no claim that the admin
-application, API routes, database migration, or Phase 03 tests are complete.
-The final implementer must replace each pending item with file-level and
-command-level evidence before requesting sign-off.
+- Protected App Router admin shell with RTL responsive sidebar, header, breadcrumbs, loading/error/not-found states, and config-driven permission-filtered navigation.
+- Auth.js credentials architecture backed by the existing Prisma session/account tables, bcrypt password verification, secure cookies, active-account checks, and server-side actor resolution.
+- `resource.action` RBAC catalogue, default system-role definitions, custom-role support, protected system-role rules, and safe DTO mapping.
+- Repository/service/validator/API layers for users, roles, permissions, settings/version history, media, notifications, audit logs, and dashboard health.
+- Standard admin route pipeline: canonical request ID, authentication, permission check, same-origin protection for mutations, rate-limit preparation, logging, no-store responses, and audit context.
+- Local-development media storage plus validated upload endpoint. Production storage fails closed until an S3-compatible storage/scanning adapter is configured.
+- Admin UI primitives and management views; server-paginated user search/status filters, role creation/edit/delete with permission assignment, setting edit/version history, media view/soft-delete, notification read state, and audit user/action/resource/date filters are wired to protected APIs.
+- Role creation, role-permission replacement, and user-role assignment enforce a no-delegation rule: an actor cannot grant a permission it does not already hold. Reserved system-role codes cannot be created as custom roles.
+- Reusable modal, confirmation, alert, toast, input, select, table, pagination, date-range, skeleton, and empty-state primitives are available to the admin application.
 
-## Planned deliverables ledger
+## Database change status
 
-| Deliverable | Required evidence for completion | Current assertion in this document |
-| --- | --- | --- |
-| Protected admin shell | Layout/guard/components plus E2E unauthorized-access evidence | Not asserted |
-| Role-aware dashboard | Scoped real-system status or honest empty states | Not asserted |
-| Config-driven navigation | Typed config and permission-filtered UI plus server enforcement | Not asserted |
-| User management | APIs, services, UI, validation, audit events, tests | Not asserted |
-| Role/permission management | Protected role rules, assignment API/UI, audit events, tests | Not asserted |
-| Settings foundation | Redacted DTOs, version history, audit events, validation | Not asserted |
-| Media foundation | Storage abstraction, metadata validation, authorization, audit | Not asserted |
-| Notification foundation | Recipient-scoped list/read model and tests | Not asserted |
-| Audit viewer | Read-only, filtered, authorized DTO/API/UI and tests | Not asserted |
-| Admin API architecture | Route/service/repository separation with standard response/error handling | Not asserted |
-| Database work | Reviewed database plan and executed migration evidence only if approved | Not asserted |
+`prisma/schema.prisma` was extended for `AdminUser`, governed roles/permissions, setting versions, media, notifications, Auth.js-compatible fields, and audit metadata/indexes. [database-plan.md](database-plan.md) was created first. Prisma validation/client generation passed. **No migration, db push, seed, reset, drop, truncate, or production database operation was executed.**
 
-## Documentation work completed by this subtask
+## Visual QA
 
-The Phase 03 architecture, UI, user-management, RBAC, security, API,
-database-safety, testing, implementation-ledger, and scoring documents were
-created. This documentation-only work did not modify source code, package
-dependencies, schema files, CI configuration, migrations, or any database.
+The protected route redirects to the responsive admin login view. The QA capture is stored at [admin-login-qa.png](admin-login-qa.png).
 
-## Required final report additions
+## Known limitations before production sign-off
 
-Before Phase 03 can be marked complete, record:
-
-1. Branch name and commit range.
-2. Exact files changed, grouped by UI, server, schema/migrations, tests, and
-   documentation.
-3. Database changes and confirmation that no destructive operation occurred.
-4. Actual API endpoints created with required permissions.
-5. Test files added and complete quality-gate results.
-6. Security controls verified and any residual risk accepted by the owner.
-7. Performance checks, including pagination/query behavior and bundle/runtime
-   observations where applicable.
-8. Visual review screenshots if the UI changed.
-9. Known limitations, explicitly separated from completed behavior.
-10. Evidence-based Phase 03 score and recommendation for Phase 04.
-
-## Non-negotiable release conditions
-
-No automatic merge is permitted. A pull request may be opened only after the
-implementation ledger and testing report contain evidence for the final branch
-state, no legacy storefront regression is known, and the quality score meets
-the agreed threshold.
+1. A reviewed additive migration and staging validation are still required before schema deployment.
+2. Bootstrap roles/admin seed code exists but is intentionally not executed; no credentials are committed.
+3. Production S3 integration, malware scanning/quarantine, distributed rate limiting, MFA, and monitoring remain deployment hardening work.
+4. The current data model prepares branch scope on admin actors; branch-owned resources will be enforced when the Branch module lands.
+5. Authenticated database-backed E2E needs disposable PostgreSQL fixtures in CI/staging.
+6. Prisma Client generation passes on Prisma 6.7.0 but reports an output-path deprecation for Prisma 7; resolve it as a dedicated, fully tested dependency upgrade.

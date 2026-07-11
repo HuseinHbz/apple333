@@ -63,6 +63,11 @@ exists unless the product has a documented reason to do so.
 
 - Create/update requests require validated names, codes, descriptions, and an
   allow-listed permission set.
+- An actor may only delegate permissions already present in that actor's
+  effective permission set; the same rule applies when assigning a role to a
+  user. This prevents a role editor from creating a path to self-escalation.
+- System role codes are reserved and can only enter the database via the
+  controlled bootstrap/seed path, never via the custom-role endpoint.
 - A mutation must prevent duplicate role codes and invalid permission links.
 - Critical role deletion and self-escalation paths are rejected server-side.
 - Assignment/revocation validates both the target user and actor scope.

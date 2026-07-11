@@ -53,6 +53,19 @@ English identifiers without directionality leaks.
 Reusable components should expose semantic variants such as `success`,
 `warning`, `danger`, and `neutral`, rather than page-specific colour classes.
 
+## Current implementation evidence
+
+The shared admin component set now includes responsive shell/navigation,
+data table, server-aware pagination for users and audit records, search/filter
+controls, badges, input/select/date inputs, file picker, Radix modal and
+confirmation dialog, alert, toast, skeleton, and empty/error states. Role and
+settings forms use pending/error states and audit-sensitive confirmations.
+
+Column sorting is deliberately not claimed as completed: the current lists
+support documented server ordering plus search/filter/pagination, while an
+explicit user-selectable sort contract remains a follow-up before production
+sign-off.
+
 ## Data-dense screens
 
 User, role, permission, media, notification, and audit screens should share a

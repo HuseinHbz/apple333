@@ -1,94 +1,25 @@
-# Phase 03 — Admin API Contract
+# Phase 03 — Admin API Documentation
 
-## Contract status
+All endpoints use the `{ success, data | error, meta: { requestId } }` envelope, validate input with Zod, resolve the actor server-side, require a permission, and set `Cache-Control: private, no-store`.
 
-This is the API design contract for Phase 03. Endpoint names below are planned
-surfaces unless implementation and test evidence says otherwise. Consumers must
-not treat this document alone as proof that an endpoint is deployed.
-
-All routes are rooted at `/api/admin` and require a verified actor except for
-explicitly public endpoints documented elsewhere.
-
-## Common request rules
-
-1. Create or propagate a request ID.
-2. Resolve the server-side actor and reject absent/invalid sessions.
-3. Require the route permission and record/branch scope.
-4. Validate params, query, and JSON body with Zod.
-5. Call a service; repository access stays behind the service boundary.
-6. Audit permitted administrative mutations.
-7. Return an allow-listed DTO using the standard envelope.
-
-## Response envelope
-
-```ts
-type ApiSuccess<T> = {
-  success: true;
-  data: T;
-  meta: { requestId: string };
-};
-
-type ApiFailure = {
-  success: false;
-  error: { code: string; message: string };
-  meta: { requestId: string };
-};
-```
-
-Client messages must be safe for display. Stack traces, SQL/Prisma details,
-filesystem paths, tokens, and sensitive configuration values are not API data.
-
-## Resource contract
-
-| Resource | Intended route family | Required permission (minimum) | Mutation audit |
+| Endpoint | Methods | Permission | Notes |
 | --- | --- | --- | --- |
-| Users | `GET/POST /users`, `GET/PATCH /users/:id` | `users.read`, `users.create`, `users.update` | Yes |
-| Roles | `GET/POST /roles`, `GET/PATCH/DELETE /roles/:id` | `roles.manage` | Yes |
-| Permissions | `GET /permissions` | Role/governance read policy | No mutation in this phase unless explicitly added |
-| Settings | `GET/PATCH /settings/:key` | `settings.read`, `settings.update` | Yes, with redaction |
-| Media | `GET/POST /media`, `GET/DELETE /media/:id` | Media-specific policy | Yes |
-| Notifications | `GET /notifications`, `PATCH /notifications/:id/read` | Recipient/scope policy | Yes for state changes |
-| Audit logs | `GET /audit-logs` | `audit.read` | Viewer is read-only |
-| Dashboard | `GET /dashboard` | Dashboard read policy | No, unless an action occurs |
+| `/api/admin/dashboard` | GET | `dashboard.read` | Real identity/system counts; future business metrics are explicitly unavailable. |
+| `/api/admin/users` | GET | `users.read` | Paginated, search/status-filtered safe DTOs. |
+| `/api/admin/users/:id` | GET, PATCH | `users.read`, `users.update` | Detail/status update; self-lockout rejected. |
+| `/api/admin/users/:id/roles` | PATCH | `users.update` | Validated role assignment with audit event; cannot delegate permissions the actor lacks. |
+| `/api/admin/roles` | GET, POST | `roles.read`, `roles.create` | List/create custom roles; reserved system codes and out-of-scope permission delegation are rejected. |
+| `/api/admin/roles/:id` | GET, PATCH, DELETE | `roles.read`, `roles.update`, `roles.delete` | System roles cannot be changed or deleted. |
+| `/api/admin/roles/:id/permissions` | PATCH | `roles.update` | Replaces validated permission links atomically without allowing privilege delegation. |
+| `/api/admin/permissions` | GET | `permissions.read` | Grouped `resource.action` catalogue. |
+| `/api/admin/settings` | GET, PATCH | `settings.read`, `settings.update` | Versioned values; sensitive values are redacted. |
+| `/api/admin/settings/:key/versions` | GET | `settings.read` | Redacted immutable settings history. |
+| `/api/admin/media` | GET, POST | `media.read`, `media.create` | Metadata list/create endpoint. |
+| `/api/admin/media/upload` | POST | `media.create` | FormData upload with MIME, extension, size, and magic-byte checks. |
+| `/api/admin/media/content` | GET | `media.read` | Authorized local-development content read; access is audited. |
+| `/api/admin/media/:id` | DELETE | `media.delete` | Soft deletion with audit event. |
+| `/api/admin/notifications` | GET, POST | `notifications.read`, `notifications.update` | Internal notification foundation. |
+| `/api/admin/notifications/:id` | PATCH | `notifications.update` | Marks notification read with audit event. |
+| `/api/admin/audit-logs` | GET | `audit.read` | Read-only pagination and actor/action/resource/date filters. |
 
-Permission names for future resources must follow the `resource.action` grammar
-and be registered in the server permission catalogue. Exact media, notification,
-and dashboard permission names need explicit design before implementation.
-
-## Pagination, filtering, and sorting
-
-List routes accept an allow-listed pagination model, for example:
-
-```text
-?page=1&pageSize=25&query=...&status=ACTIVE&sort=createdAt.desc
-```
-
-The server caps `pageSize`, validates every filter/sort key, applies actor scope
-before pagination, and returns a pagination DTO only when its fields are
-accurate. Never accept raw SQL fields, arbitrary relation names, or unconstrained
-filter objects from the client.
-
-## Errors and HTTP semantics
-
-| Situation | Typical status | Public behavior |
-| --- | --- | --- |
-| Invalid request | 400 | Field-safe validation response |
-| No verified session | 401 | Authentication required; no protected data |
-| Missing permission/scope | 403 (or policy-safe 404) | No policy internals or data leakage |
-| Missing permitted record | 404 | Safe not-found response |
-| Conflict | 409 | Safe conflict code, e.g. duplicate role code |
-| Unexpected error | 500 | Generic message with request ID |
-
-## Idempotency and concurrency
-
-Write routes that can be retried by the browser/client should define an
-idempotency or concurrency strategy before release. Settings updates and role
-assignment are especially sensitive to lost updates; expected version checks or
-transactional invariants should be applied in the service/repository layer.
-
-## API testing evidence
-
-Every route family requires integration coverage for success, missing session,
-missing permission, invalid input, scope violation, and audit side effect where
-applicable. This document makes no assertion that Phase 03 endpoint tests have
-already been added or passed.
+Cookie-authenticated mutations additionally require same-origin validation and an in-memory rate-limit preparation. Each successful mutation is transactionally paired with an append-only audit record. APIs do not serialize Prisma records, password hashes, OTPs, session/provider tokens, national-code hashes, or sensitive setting values.
