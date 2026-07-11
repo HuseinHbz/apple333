@@ -24,7 +24,7 @@
 | Aggregate Vitest suite | `pnpm test` | Passed; 3 files / 4 tests |
 | Prisma schema | `pnpm prisma:validate` | Passed with process-local, non-secret `DATABASE_URL` |
 | Prisma Client | `pnpm prisma:generate` | Passed |
-| E2E smoke | `pnpm test:e2e` | Blocked: local Chromium browser is not installed |
+| E2E smoke | `pnpm test:e2e` | Passed after approved Chromium installation; the Phase 02 smoke and its later Phase 03 admin-access extension both pass locally |
 
 ## Changes made during gate execution
 
@@ -32,6 +32,8 @@
 - Made Vitest's ESM path resolution explicit and separated its unit/integration discovery from the Playwright E2E suite.
 - Recorded all observed failures and their resolutions in [quality-gate-report.md](quality-gate-report.md).
 
-## Remaining blocker
+## E2E resolution addendum — 2026-07-11
 
-The only unmet exit criterion is the Playwright E2E smoke test. Its Chromium binary is absent. An approved `pnpm exec playwright install chromium` is required before the smoke test can be rerun. Because the Phase 02 gate definition requires E2E to pass, Phase 02.1 is **not yet eligible for final sign-off or Phase 03**.
+The approved `pnpm exec playwright install chromium` completed and
+`pnpm test:e2e` passed. This resolved the final Phase 02.1 local gate; no
+application dependency, database, migration, or production data was changed.

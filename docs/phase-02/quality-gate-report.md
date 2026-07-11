@@ -46,3 +46,9 @@ This report records every quality-gate failure observed during Phase 02.1. No te
 - **Root cause:** Dependencies were installed with lifecycle scripts intentionally disabled, so the Playwright browser binary was not downloaded. The project dependency itself is present and the E2E test server started successfully.
 - **Attempted remediation:** `pnpm exec playwright install chromium` was requested, but the required elevated approval was interrupted by the approval service before download began.
 - **Recommended fix:** Explicitly approve `pnpm exec playwright install chromium`, then rerun `pnpm test:e2e`. This downloads only the local Playwright browser cache and does not alter application dependencies, source code, or the database.
+
+## Playwright Chromium browser — resolved addendum (2026-07-11)
+
+- **Command:** `pnpm exec playwright install chromium`, followed by `pnpm test:e2e`.
+- **Result:** Chromium installed in the local Playwright cache and the E2E suite passed.
+- **Scope confirmation:** The installation changed neither application dependencies nor source code, and did not access or modify a database.

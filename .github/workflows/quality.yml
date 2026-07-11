@@ -33,4 +33,5 @@ jobs:
       - run: pnpm test
       - run: pnpm test:integration
       - run: pnpm build
+      - run: pnpm exec playwright install chromium
       - run: pnpm test:e2e
