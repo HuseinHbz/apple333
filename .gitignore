@@ -14,3 +14,4 @@ node_modules/
 *.tsbuildinfo
 playwright-report/
 test-results/
+.local-media/
