@@ -1,28 +1,31 @@
-# فاز ۵ — Premium Store Front
+# فاز ۵ — Storefront Migration
 
-## خروجی اجراشده
+## وضعیت فعلی
 
-- storefront responsive شامل [catalog](../../catalog.html)، [product detail](../../product.html)، [compare](../../compare.html) و [wishlist](../../wishlist.html).
-- جست‌وجو، فیلتر دسته/قیمت، انتخاب حداکثر چهار محصول برای compare، wishlist و cart preview مبتنی بر local state.
-- semantic HTML، skip link، labelهای فرم، contrast قابل‌قبول و responsive breakpoints برای موبایل و tablet.
-- `robots.txt`، `sitemap.xml`، canonical/meta description و Product JSON-LD نمونه.
+نمونهٔ static storefront نسخهٔ محلی (`local-v1`) از شاخهٔ فعلی حذف شده است؛
+زیرا با Next.js App Router، Prisma و لایه‌های امنیتی نسخهٔ Enterprise یکپارچه
+نبود. نسخهٔ کامل آن در شاخهٔ `legacy/local-v1` و تگ `v1.0-local` باقی مانده
+است. جزئیات حذف در [Legacy cleanup](../legacy-removal/phase-03-cleanup.md)
+ثبت شده است.
 
-## Design system
+## هدف فاز
 
-Grid هشت‌پیکسلی، رنگ‌های Ink/White/Apple Gray/Apple Blue، radius محدود، shadow نرم و حرکت‌های کوتاه در نسخهٔ production. Typography پیشنهادی: SF Pro در محیط دارای مجوز، سپس Inter/Vazirmatn. کلیک‌پذیری حداقل 44px، focus state واضح و احترام به `prefers-reduced-motion` الزامی است.
+Storefront جدید باید با Next.js + TypeScript، مسیرهای `(store)`، داده‌های
+معتبر server-side و طراحی Apple Premium ساخته شود. هیچ HTML/JS قدیمی یا
+دادهٔ نمایشی نباید دوباره به runtime جدید برگردد.
 
-## معماری Production Frontend
+## الزامات انتقال
 
-نسخهٔ فعلی برای اجرای بدون dependency از HTML/CSS/JS استفاده می‌کند. برای production باید به Next.js + TypeScript، Tailwind، shadcn/Radix، TanStack Query، Zustand، React Hook Form و SSR/ISR منتقل شود. Catalog/search از API نسخه‌دار، images از CDN، و cart/wishlist server-synced پس از login تغذیه شوند.
+- Catalog، product detail، compare، wishlist و cart باید به Routeهای typed
+  App Router تبدیل شوند.
+- قیمت، موجودی، تخفیف، سبد و checkout فقط از APIهای معتبر server-side تغذیه
+  شوند.
+- SEO با metadata، sitemap و robots metadata routeهای Next.js مدیریت شود.
+- تصاویر از object storage/CDN و media module فعلی دریافت شوند.
+- WCAG 2.2 AA، RTL، E2E، تست visual و performance پیش از release ضروری است.
 
-## SEO و Performance
+## کیفیت موردنیاز
 
-SSR/ISR برای صفحهٔ محصول و landing page، metadata پویا، canonical، OpenGraph/Twitter Card، JSON-LD Product/Breadcrumb/FAQ، sitemap پویا، تصویر AVIF/WebP با ابعاد مشخص و CDN. هدف‌های production: LCP < 2.5s، INP < 200ms، CLS < 0.1 و Lighthouse با دادهٔ واقعی آزمایش می‌شود؛ امتیاز 100 بدون تست محیط production ادعا نمی‌شود.
-
-## Accessibility و QA
-
-WCAG 2.2 AA: keyboard navigation، heading hierarchy، focus، contrast، نام قابل دسترس دکمه‌ها و error state. Quality gate هر صفحه: visual، UX، accessibility، performance، conversion، Apple feeling و code quality؛ آستانهٔ 9.8/10 تنها بعد از prototype test، Lighthouse و تست کاربر معتبر است.
-
-## موارد نیازمند اتصال Production
-
-Autocomplete فارسی/انگلیسی، typo tolerance، voice search، موجودی زندهٔ شعب، review، ویدیو/360°، CMS landing page، price-drop notification، export PDF compare و dark mode نیازمند API، provider یا runtime production هستند. هیچ‌یک نباید با دادهٔ ساختگی به مشتری نمایش داده شود.
+هدف‌های production: LCP کمتر از 2.5 ثانیه، INP کمتر از 200ms، CLS کمتر از
+0.1 و Lighthouse با دادهٔ واقعی. امتیاز 9.8/10 فقط بعد از parity واقعی،
+تست کاربر و quality gateهای production قابل تأیید است.

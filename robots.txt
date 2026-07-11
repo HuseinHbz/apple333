@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-Disallow: /platform.html
-Sitemap: https://apple333.ir/sitemap.xml
