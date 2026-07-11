@@ -1,4 +1,17 @@
-import { describe,expect,it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+
 import { AuthorizationError } from '@/server/errors/app-error';
-import { requirePermission } from '@/server/security/permissions';
-describe('permission guard',()=>{it('rejects a missing permission',()=>expect(()=>requirePermission({id:'u1',permissions:new Set()},'users.read')).toThrow(AuthorizationError));});
+import { requirePermission, type SessionActor } from '@/server/security/permissions';
+
+const actor: SessionActor = {
+  id: 'u1',
+  isAdmin: true,
+  roleCodes: [],
+  permissions: new Set()
+};
+
+describe('permission guard', () => {
+  it('rejects a missing permission', () => {
+    expect(() => requirePermission(actor, 'users.read')).toThrow(AuthorizationError);
+  });
+});
