@@ -1,3 +1,17 @@
 data/
 __pycache__/
 *.pyc
+.env
+.env.local
+.env.production
+.env.staging
+*.pem
+*.key
+credentials/
+node_modules/
+.pnpm-store/
+.next/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.local-media/

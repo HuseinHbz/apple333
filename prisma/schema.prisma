@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SettingCategory {
+  GENERAL
+  SECURITY
+  NOTIFICATION
+  STORAGE
+  APPLICATION
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+enum NotificationChannel {
+  INTERNAL
+  EMAIL
+  SMS
+  PUSH
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+model User {
+  id              String                 @id @default(cuid())
+  name            String?
+  image           String?
+  email           String?                @unique
+  emailVerified   DateTime?
+  mobile          String?                @unique
+  status          UserStatus             @default(ACTIVE)
+  profile         UserProfile?
+  adminProfile    AdminUser?
+  addresses       Address[]
+  roles           UserRole[]
+  sessions        Session[]
+  accounts        Account[]
+  auditLogs       AuditLog[]             @relation("AuditActor")
+  uploadedMedia   MediaFile[]            @relation("MediaUploader")
+  notifications   Notification[]         @relation("NotificationRecipient")
+  updatedSettings SystemSetting[]        @relation("SettingUpdatedBy")
+  settingVersions SystemSettingVersion[] @relation("SettingVersionActor")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  passwordHash String?
+  branchId     String?
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([branchId, isActive])
+}
+
+model UserProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  firstName        String?
+  lastName         String?
+  nationalCodeHash String?  @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Address {
+  id            String   @id @default(cuid())
+  userId        String
+  label         String?
+  recipientName String
+  mobile        String
+  province      String?
+  city          String?
+  line1         String
+  postalCode    String?
+  isDefault     Boolean  @default(false)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  name        String
+  description String?
+  isSystem    Boolean          @default(false)
+  users       UserRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([isSystem, name])
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  group       String
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([group, code])
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, expires])
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, token])
+}
+
+model SystemSetting {
+  id          String                 @id @default(cuid())
+  key         String                 @unique
+  category    SettingCategory
+  value       Json
+  isSensitive Boolean                @default(false)
+  version     Int                    @default(1)
+  updatedById String?
+  updatedBy   User?                  @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  versions    SystemSettingVersion[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([category, key])
+}
+
+model SystemSettingVersion {
+  id          String        @id @default(cuid())
+  settingId   String
+  version     Int
+  value       Json
+  changedById String?
+  setting     SystemSetting @relation(fields: [settingId], references: [id], onDelete: Cascade)
+  changedBy   User?         @relation("SettingVersionActor", fields: [changedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+
+  @@unique([settingId, version])
+  @@index([changedById, createdAt])
+}
+
+model MediaFile {
+  id           String    @id @default(cuid())
+  storageKey   String    @unique
+  originalName String
+  contentType  String
+  extension    String
+  bytes        Int
+  kind         MediaKind
+  url          String?
+  checksum     String?
+  metadata     Json?
+  uploadedById String
+  uploadedBy   User      @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([uploadedById, createdAt])
+  @@index([kind, deletedAt, createdAt])
+}
+
+model Notification {
+  id          String               @id @default(cuid())
+  recipientId String
+  channel     NotificationChannel  @default(INTERNAL)
+  priority    NotificationPriority @default(NORMAL)
+  status      NotificationStatus   @default(PENDING)
+  category    String
+  title       String
+  body        String
+  actionUrl   String?
+  metadata    Json?
+  readAt      DateTime?
+  recipient   User                 @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([recipientId, status, createdAt])
+  @@index([category, priority, createdAt])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  requestId  String
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  actor      User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, entityType, createdAt])
+  @@index([requestId])
+}
