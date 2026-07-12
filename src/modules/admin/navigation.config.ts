@@ -28,6 +28,8 @@ export interface AdminNavigationGroup {
   items: readonly AdminNavigationItem[];
 }
 
+const implementedRouteOverrides = new Set(['/admin/products']);
+
 export const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     id: 'overview',
@@ -82,7 +84,9 @@ export function visibleAdminNavigation(permissions: ReadonlySet<string>): readon
   return adminNavigation
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.permission || permissions.has(item.permission))
+      items: group.items
+        .filter((item) => !item.permission || permissions.has(item.permission))
+        .map((item) => implementedRouteOverrides.has(item.href) ? { ...item, availability: 'available' as const } : item)
     }))
     .filter((group) => group.items.length > 0);
 }
