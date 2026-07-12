@@ -14,3 +14,10 @@ test('unauthenticated visitors are redirected away from the admin platform', asy
   expect(response.headers()['cache-control']).toContain('no-store');
   expect(body).toMatchObject({ success: false, error: { code: 'UNAUTHENTICATED' } });
 });
+
+test('unauthenticated visitors cannot open Phase 04 PIM administration pages', async ({ page }) => {
+  for (const route of ['/admin/products', '/admin/brands', '/admin/categories', '/admin/specifications', '/admin/warranties', '/admin/product-imports']) {
+    await page.goto(route);
+    await expect(page, `Expected ${route} to require an authenticated administrator.`).toHaveURL(/\/account\/login/);
+  }
+});
