@@ -48,6 +48,29 @@ enum NotificationStatus {
   FAILED
 }
 
+enum CatalogProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ProductMediaRole {
+  HERO
+  GALLERY
+  VIDEO
+}
+
+enum BranchKind {
+  STORE
+  CENTRAL_STOCK
+}
+
+enum StorefrontCartStatus {
+  ACTIVE
+  ABANDONED
+  CONVERTED
+}
+
 model User {
   id              String                 @id @default(cuid())
   name            String?
@@ -67,6 +90,7 @@ model User {
   notifications   Notification[]         @relation("NotificationRecipient")
   updatedSettings SystemSetting[]        @relation("SettingUpdatedBy")
   settingVersions SystemSettingVersion[] @relation("SettingVersionActor")
+  storefrontCarts StorefrontCart[]
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
@@ -248,12 +272,158 @@ model MediaFile {
   metadata     Json?
   uploadedById String
   uploadedBy   User      @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  productMedia ProductMedia[]
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   @@index([uploadedById, createdAt])
   @@index([kind, deletedAt, createdAt])
+}
+
+model CatalogCategory {
+  id          String            @id @default(cuid())
+  parentId    String?
+  slug        String            @unique
+  name        String
+  description String?
+  imageUrl    String?
+  sortOrder   Int               @default(0)
+  isActive    Boolean           @default(true)
+  parent      CatalogCategory?  @relation("CatalogCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    CatalogCategory[] @relation("CatalogCategoryTree")
+  products    CatalogProduct[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([parentId, sortOrder])
+  @@index([isActive, sortOrder])
+}
+
+model CatalogProduct {
+  id            String               @id @default(cuid())
+  categoryId    String?
+  slug          String               @unique
+  name          String
+  brand         String               @default("Apple")
+  summary       String?
+  description   String?
+  status        CatalogProductStatus @default(DRAFT)
+  specifications Json?
+  seoTitle      String?
+  seoDescription String?
+  isFeatured    Boolean              @default(false)
+  featuredRank  Int?
+  isNew         Boolean              @default(false)
+  isOnSale      Boolean              @default(false)
+  publishedAt   DateTime?
+  category      CatalogCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants      CatalogVariant[]
+  media         ProductMedia[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([categoryId, status])
+  @@index([isFeatured, status])
+}
+
+model CatalogVariant {
+  id                  String               @id @default(cuid())
+  productId           String
+  sku                 String               @unique
+  title               String?
+  color               String?
+  storage             String?
+  region              String?
+  warranty            String?
+  attributes          Json?
+  priceRials          BigInt
+  compareAtPriceRials BigInt?
+  isActive            Boolean              @default(true)
+  sortOrder           Int                  @default(0)
+  product             CatalogProduct       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory           BranchInventory[]
+  cartItems           StorefrontCartItem[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([productId, isActive, sortOrder])
+  @@index([isActive, priceRials])
+}
+
+model ProductMedia {
+  productId String
+  mediaId   String
+  role      ProductMediaRole @default(GALLERY)
+  altText   String?
+  sortOrder Int              @default(0)
+  product   CatalogProduct   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  media     MediaFile        @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+
+  @@id([productId, mediaId])
+  @@index([mediaId])
+  @@index([productId, role, sortOrder])
+}
+
+model Branch {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  kind        BranchKind        @default(STORE)
+  city        String?
+  address     String?
+  phone       String?
+  isActive    Boolean           @default(true)
+  isPickupEnabled Boolean        @default(true)
+  inventory   BranchInventory[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([isActive, kind])
+}
+
+model BranchInventory {
+  branchId  String
+  variantId String
+  onHand    Int            @default(0)
+  reserved  Int            @default(0)
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  variant   CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  updatedAt DateTime       @updatedAt
+
+  @@id([branchId, variantId])
+  @@index([variantId])
+}
+
+model StorefrontCart {
+  id             String               @id @default(cuid())
+  userId         String?
+  guestTokenHash String?              @unique
+  status         StorefrontCartStatus @default(ACTIVE)
+  currency       String               @default("IRR")
+  version        Int                  @default(1)
+  expiresAt      DateTime?
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items          StorefrontCartItem[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([userId, status, updatedAt])
+  @@index([status, expiresAt])
+}
+
+model StorefrontCartItem {
+  cartId    String
+  variantId String
+  quantity  Int            @default(1)
+  cart      StorefrontCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant   CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@id([cartId, variantId])
+  @@index([variantId])
 }
 
 model Notification {
