@@ -1,0 +1,105 @@
+name: ${COMPOSE_PROJECT_NAME}
+
+x-apple333-labels: &apple333-labels
+  com.apple333.project: ${APPLE333_PROJECT_ID}
+  com.apple333.managed: "true"
+  com.apple333.environment: ${APPLE333_ENVIRONMENT}
+  com.apple333.install-id: ${APPLE333_INSTALL_ID}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: postgres
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks: [private]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: redis
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    expose: ["3000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [private]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: app
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${APPLE333_HTTP_BIND}:${APPLE333_HTTP_PORT}:80"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [private]
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: nginx
+
+networks:
+  private:
+    name: ${COMPOSE_PROJECT_NAME}_private
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: network
+
+volumes:
+  postgres_data:
+    name: ${COMPOSE_PROJECT_NAME}_postgres_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: postgres-data
+  redis_data:
+    name: ${COMPOSE_PROJECT_NAME}_redis_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: redis-data
