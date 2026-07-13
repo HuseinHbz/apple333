@@ -19,6 +19,7 @@
     "pim:test:preflight": "node scripts/verify-pim-test-environment.mjs",
     "pim:test:migrate": "node scripts/run-pim-test-migrations.mjs",
     "test:pim-db": "node scripts/run-pim-database-tests.mjs",
+    "pim:benchmark": "node scripts/benchmark-pim-catalog.mjs",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate"
   },
