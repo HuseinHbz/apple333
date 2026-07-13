@@ -1,0 +1,147 @@
+name: Deploy production (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_mode:
+        description: "Choose apply only for a reviewed migration with an approved rollback plan."
+        required: true
+        default: skip
+        type: choice
+        options: [skip, apply]
+      confirmation:
+        description: "Type exactly: DEPLOY APPLE333 PRODUCTION"
+        required: true
+        type: string
+
+# This workflow intentionally has no push, pull_request, schedule, or
+# workflow_run trigger. Configure required reviewers and deployment-branch
+# policies on GitHub's production Environment before enabling a release.
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: apple333-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate-request:
+    name: Validate manual production request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - shell: bash
+        env:
+          SOURCE_BRANCH: ${{ github.ref_name }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          PRODUCTION_RUNNER_LABEL: ${{ vars.PRODUCTION_RUNNER_LABEL }}
+          PRODUCTION_DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+          PRODUCTION_ENV_FILE: ${{ vars.PRODUCTION_ENV_FILE }}
+          PRODUCTION_HEALTHCHECK_URL: ${{ vars.PRODUCTION_HEALTHCHECK_URL }}
+          RELEASE_SHA: ${{ github.sha }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$REF_PROTECTED" == "true" ]] || {
+            echo "::error title=Production deployment blocked::Run this workflow only from a protected release branch."
+            exit 1
+          }
+          [[ "$SOURCE_BRANCH" == "main" || "$SOURCE_BRANCH" == "master" ]] || exit 1
+          [[ "$CONFIRMATION" == "DEPLOY APPLE333 PRODUCTION" ]] || exit 1
+          quality_runs="$(curl --fail --silent --show-error --retry 3 --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/runs?head_sha=$RELEASE_SHA&status=completed&per_page=100" \
+            | jq '[.workflow_runs[] | select(.event == "push" and .conclusion == "success")] | length')"
+          [[ "$quality_runs" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error title=Production deployment blocked::The selected release SHA has no successful trusted Quality workflow run."
+            exit 1
+          }
+          for name in PRODUCTION_RUNNER_LABEL PRODUCTION_DEPLOY_PATH PRODUCTION_ENV_FILE PRODUCTION_HEALTHCHECK_URL; do
+            [[ -n "${!name:-}" ]] || {
+              echo "::error title=Production configuration incomplete::Missing repository variable: $name"
+              exit 1
+            }
+          done
+
+  deploy:
+    name: Deploy approved production release
+    needs: validate-request
+    runs-on: [self-hosted, linux, x64, "${{ vars.PRODUCTION_RUNNER_LABEL }}"]
+    timeout-minutes: 60
+    environment:
+      name: production
+    steps:
+      - name: Re-check release protection after Environment approval
+        shell: bash
+        env:
+          SOURCE_BRANCH: ${{ github.ref_name }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$REF_PROTECTED" == "true" ]]
+          [[ "$SOURCE_BRANCH" == "main" || "$SOURCE_BRANCH" == "master" ]]
+          [[ "$CONFIRMATION" == "DEPLOY APPLE333 PRODUCTION" ]]
+
+      - name: Check out exact approved commit on production runner
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+          ENV_FILE: ${{ vars.PRODUCTION_ENV_FILE }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEPLOY_PATH" == /* && "$DEPLOY_PATH" != "/" && -d "$DEPLOY_PATH/.git" ]] || exit 1
+          [[ "$ENV_FILE" == /* && -f "$ENV_FILE" ]] || {
+            echo "::error title=Missing protected environment file::PRODUCTION_ENV_FILE must exist outside the Git workspace."
+            exit 1
+          }
+          cd "$DEPLOY_PATH"
+          [[ "$(git rev-parse --show-toplevel)" == "$(pwd -P)" ]] || exit 1
+          environment_realpath="$(realpath -e "$ENV_FILE")"
+          deploy_realpath="$(pwd -P)"
+          [[ "$environment_realpath" != "$deploy_realpath" && "$environment_realpath" != "$deploy_realpath/"* ]] || {
+            echo "::error title=Unsafe environment location::The protected environment file must be outside the Git checkout."
+            exit 1
+          }
+          [[ "$(stat -c '%a' "$environment_realpath")" == "600" ]] || {
+            echo "::error title=Unsafe environment permissions::The protected environment file must use mode 600."
+            exit 1
+          }
+          [[ -z "$(git status --porcelain)" ]] || {
+            echo "::error title=Dirty production checkout::Resolve local changes before a deployment."
+            exit 1
+          }
+          git fetch --no-tags origin "$RELEASE_SHA"
+          git checkout --detach "$RELEASE_SHA"
+
+      - name: Build image and deploy through ownership-aware controls
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+          ENV_FILE: ${{ vars.PRODUCTION_ENV_FILE }}
+          MIGRATION_MODE: ${{ inputs.migration_mode }}
+        run: |
+          set -Eeuo pipefail
+          cd "$DEPLOY_PATH"
+          export APPLE333_ENV_FILE="$ENV_FILE"
+          bash deploy/bin/preflight.sh --assert-owned
+          case "$MIGRATION_MODE" in
+            apply) bash deploy/bin/update.sh --apply --apply-migrations ;;
+            skip) bash deploy/bin/update.sh --apply --skip-migrations ;;
+            *) echo "::error title=Invalid migration mode::Only skip or apply is permitted."; exit 1 ;;
+          esac
+
+      - name: Verify public production readiness
+        shell: bash
+        env:
+          PRODUCTION_HEALTHCHECK_URL: ${{ vars.PRODUCTION_HEALTHCHECK_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$PRODUCTION_HEALTHCHECK_URL" =~ ^https?:// ]] || exit 1
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --connect-timeout 10 --max-time 60 "$PRODUCTION_HEALTHCHECK_URL"

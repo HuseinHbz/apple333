@@ -1,0 +1,27 @@
+groups:
+  - name: apple333-availability
+    rules:
+      - alert: Apple333NotReady
+        expr: apple333_readiness_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Apple333 readiness probe is failing
+          runbook: docs/phase-01/04-monitoring-guide.md
+      - alert: Apple333DatabaseUnavailable
+        expr: apple333_dependency_up{dependency="database"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Apple333 PostgreSQL readiness check is unavailable
+          runbook: docs/phase-01/04-monitoring-guide.md
+      - alert: Apple333RedisUnavailable
+        expr: apple333_dependency_up{dependency="redis"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Apple333 Redis readiness check is unavailable
+          runbook: docs/phase-01/04-monitoring-guide.md

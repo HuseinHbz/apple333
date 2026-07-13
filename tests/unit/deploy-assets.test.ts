@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const readDeploy = (path: string) => readFileSync(resolve(root, 'deploy', path), 'utf8');
+const readRoot = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
 describe('deployment safety assets', () => {
   it('documents the mandatory deployment-maintenance rule', () => {
@@ -23,17 +24,51 @@ describe('deployment safety assets', () => {
     const redisBlock = (compose.split('\n  redis:')[1] ?? '').split('\n  app:')[0] ?? '';
     expect(postgresBlock).not.toContain('ports:');
     expect(redisBlock).not.toContain('ports:');
+    expect(compose).toContain('minio:');
+    expect(compose).toContain('migrate:');
+    expect(compose).toContain('METRICS_ENABLED: "true"');
+    expect(compose).toContain('egress:');
+    expect(compose).toContain('mem_limit:');
+    expect(compose).toContain('/api/ready');
   });
 
   it('keeps destructive operations opt-in and rejects shared database URLs', () => {
     const library = readDeploy('bin/lib.sh');
     const uninstall = readDeploy('bin/uninstall.sh');
     const preflight = readDeploy('bin/preflight.sh');
+    const purgeUnrelated = readDeploy('bin/purge-unrelated.sh');
 
     expect(library).toContain('This managed deployment bundle only supports its labelled postgres service');
     expect(library).toContain('confirm_typed');
     expect(uninstall).toContain('--purge-owned-data');
     expect(uninstall).not.toContain('compose down -v');
     expect(preflight).toContain('Nothing was changed.');
+    expect(library).toContain('load_environment_file');
+    expect(library).toContain('REDIS_PASSWORD must be a shell-safe value');
+    expect(library).toContain('APPLE333_HTTP_BIND must be loopback-only');
+    expect(library).toContain('$(basename "$output")');
+    expect(purgeUnrelated).toContain('OWNED_CURRENT|OWNED_OTHER_APPLE333');
+  });
+
+  it('keeps one canonical Compose definition and uses a non-root production image', () => {
+    const conventionalEntrypoint = readRoot('docker-compose.production.yml');
+    const dockerfile = readRoot('docker/Dockerfile.production');
+
+    expect(conventionalEntrypoint).toContain('deploy/compose.production.yml');
+    expect(dockerfile).toContain('FROM base AS builder');
+    expect(dockerfile).toContain('FROM base AS migrator');
+    expect(dockerfile).toContain('USER nextjs');
+    expect(dockerfile).toContain('dumb-init');
+  });
+
+  it('uses the reviewed migration image and trusted client addressing', () => {
+    const library = readDeploy('bin/lib.sh');
+    const nginx = readDeploy('nginx.production.conf');
+
+    expect(library).toContain('build_release_images');
+    expect(library).toContain('run_prisma');
+    expect(nginx).toContain('real_ip_header X-Forwarded-For');
+    expect(nginx).toContain('limit_req_zone $binary_realip_remote_addr');
+    expect(nginx).toContain('proxy_set_header X-Forwarded-For $realip_remote_addr');
   });
 });

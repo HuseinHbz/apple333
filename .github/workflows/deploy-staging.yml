@@ -1,0 +1,152 @@
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: ["Quality"]
+    branches: [main, master]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      migration_mode:
+        description: "Apply reviewed Prisma migrations, or deploy without schema changes."
+        required: true
+        default: skip
+        type: choice
+        options: [skip, apply]
+
+# Staging may be automated only after a successful trusted quality run. The
+# self-hosted runner must already contain a manually installed, ownership-proven
+# Apple333 checkout and protected environment file. This workflow never writes
+# secrets, creates a database, or deletes/reuses unknown resources.
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: apple333-staging-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate-request:
+    name: Validate staging release request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_sha: ${{ steps.validate.outputs.release_sha }}
+    steps:
+      - id: validate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          QUALITY_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          QUALITY_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_BRANCH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+          RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          STAGING_RUNNER_LABEL: ${{ vars.STAGING_RUNNER_LABEL }}
+          STAGING_DEPLOY_PATH: ${{ vars.STAGING_DEPLOY_PATH }}
+          STAGING_ENV_FILE: ${{ vars.STAGING_ENV_FILE }}
+          STAGING_HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$EVENT_NAME" == "workflow_run" && ( "$QUALITY_CONCLUSION" != "success" || "$QUALITY_EVENT" != "push" ) ]]; then
+            echo "::error title=Staging deployment blocked::Only a successful Quality run caused by a push may deploy staging."
+            exit 1
+          fi
+          [[ "$SOURCE_BRANCH" == "main" || "$SOURCE_BRANCH" == "master" ]] || {
+            echo "::error title=Staging deployment blocked::Only the main or master release branch may deploy staging."
+            exit 1
+          }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error title=Invalid release SHA::A full immutable commit SHA is required."
+            exit 1
+          }
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            quality_runs="$(curl --fail --silent --show-error --retry 3 --connect-timeout 10 --max-time 30 \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/quality.yml/runs?head_sha=$RELEASE_SHA&status=completed&per_page=100" \
+              | jq '[.workflow_runs[] | select(.event == "push" and .conclusion == "success")] | length')"
+            [[ "$quality_runs" =~ ^[1-9][0-9]*$ ]] || {
+              echo "::error title=Staging deployment blocked::The selected release SHA has no successful trusted Quality workflow run."
+              exit 1
+            }
+          fi
+          for name in STAGING_RUNNER_LABEL STAGING_DEPLOY_PATH STAGING_ENV_FILE STAGING_HEALTHCHECK_URL; do
+            [[ -n "${!name:-}" ]] || {
+              echo "::error title=Staging configuration incomplete::Missing repository variable: $name"
+              exit 1
+            }
+          done
+          printf 'release_sha=%s\n' "$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Build, deploy, and verify staging release
+    needs: validate-request
+    runs-on: [self-hosted, linux, x64, "${{ vars.STAGING_RUNNER_LABEL }}"]
+    timeout-minutes: 45
+    environment:
+      name: staging
+    steps:
+      - name: Verify deployment checkout and fetch exact release
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ vars.STAGING_DEPLOY_PATH }}
+          ENV_FILE: ${{ vars.STAGING_ENV_FILE }}
+          RELEASE_SHA: ${{ needs.validate-request.outputs.release_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEPLOY_PATH" == /* && "$DEPLOY_PATH" != "/" && -d "$DEPLOY_PATH/.git" ]] || {
+            echo "::error title=Invalid staging checkout::STAGING_DEPLOY_PATH must be an existing dedicated Git checkout."
+            exit 1
+          }
+          [[ "$ENV_FILE" == /* && -f "$ENV_FILE" ]] || {
+            echo "::error title=Missing protected environment file::STAGING_ENV_FILE must exist outside the Git workspace."
+            exit 1
+          }
+          cd "$DEPLOY_PATH"
+          [[ "$(git rev-parse --show-toplevel)" == "$(pwd -P)" ]] || exit 1
+          environment_realpath="$(realpath -e "$ENV_FILE")"
+          deploy_realpath="$(pwd -P)"
+          [[ "$environment_realpath" != "$deploy_realpath" && "$environment_realpath" != "$deploy_realpath/"* ]] || {
+            echo "::error title=Unsafe environment location::The protected environment file must be outside the Git checkout."
+            exit 1
+          }
+          [[ "$(stat -c '%a' "$environment_realpath")" == "600" ]] || {
+            echo "::error title=Unsafe environment permissions::The protected environment file must use mode 600."
+            exit 1
+          }
+          [[ -z "$(git status --porcelain)" ]] || {
+            echo "::error title=Dirty staging checkout::Resolve local changes before a deployment."
+            exit 1
+          }
+          git fetch --no-tags origin "$RELEASE_SHA"
+          git checkout --detach "$RELEASE_SHA"
+
+      - name: Build image, deploy safely, and validate ownership
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ vars.STAGING_DEPLOY_PATH }}
+          ENV_FILE: ${{ vars.STAGING_ENV_FILE }}
+          MIGRATION_MODE: ${{ inputs.migration_mode || 'skip' }}
+        run: |
+          set -Eeuo pipefail
+          cd "$DEPLOY_PATH"
+          export APPLE333_ENV_FILE="$ENV_FILE"
+          bash deploy/bin/preflight.sh --assert-owned
+          case "$MIGRATION_MODE" in
+            apply) bash deploy/bin/update.sh --apply --apply-migrations ;;
+            skip) bash deploy/bin/update.sh --apply --skip-migrations ;;
+            *) echo "::error title=Invalid migration mode::Only skip or apply is permitted."; exit 1 ;;
+          esac
+
+      - name: Verify public staging readiness
+        shell: bash
+        env:
+          STAGING_HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$STAGING_HEALTHCHECK_URL" =~ ^https?:// ]] || exit 1
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --connect-timeout 10 --max-time 60 "$STAGING_HEALTHCHECK_URL"

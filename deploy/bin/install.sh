@@ -50,22 +50,25 @@ on_error() {
 }
 trap on_error ERR
 
-log "Starting only the managed PostgreSQL and Redis services."
-compose up -d postgres redis
+log "Starting only the managed PostgreSQL, Redis, and MinIO services."
+compose up -d postgres redis minio
 wait_for_service_health postgres 40
 wait_for_service_health redis 40
+wait_for_service_health minio 40
 
 log "Creating the Apple333 database ownership marker in installing state."
 set_database_marker_status installing
 migration_started=true
 
-log "Applying reviewed Prisma migrations. prisma db push/reset/seed are never used here."
-compose run --rm app pnpm prisma migrate deploy
+log "Building the exact app and migration images for this reviewed release."
+build_release_images
+log "Applying reviewed Prisma migrations with the dedicated migration image. prisma db push/reset/seed are never used here."
+run_prisma migrate deploy
 set_database_marker_status active
 
 write_state_marker
 log "Building and starting the application and reverse proxy."
-compose up -d --build app nginx
+compose up -d app nginx
 wait_for_service_health app 45
 wait_for_readiness
 record_deployed_at

@@ -53,9 +53,10 @@ if [[ "$migration_decision" == "apply" ]]; then
 fi
 
 log "Ensuring verified infrastructure is running before release checks."
-compose up -d postgres redis
+compose up -d postgres redis minio
 wait_for_service_health postgres 40
 wait_for_service_health redis 40
+wait_for_service_health minio 40
 [[ "$(database_classification)" == "OWNED_CURRENT" ]] || die "Database marker no longer proves ownership of this deployment"
 
 migration_started=false
@@ -70,19 +71,25 @@ on_error() {
 trap on_error ERR
 
 if [[ "$migration_decision" == "apply" ]]; then
+  log "Building the exact app and migration images for this reviewed release."
+  build_release_images
   backup_database
   set_database_marker_status installing
   migration_started=true
   log "Checking and applying reviewed Prisma migrations."
-  compose run --rm app pnpm prisma migrate status
-  compose run --rm app pnpm prisma migrate deploy
+  run_prisma migrate status
+  run_prisma migrate deploy
   set_database_marker_status active
 else
   warn "Proceeding without migrations because --skip-migrations was explicitly selected."
 fi
 
-log "Building and starting the updated application."
-compose up -d --build app nginx
+log "Starting the updated application."
+if [[ "$migration_decision" == "apply" ]]; then
+  compose up -d app nginx
+else
+  compose up -d --build app nginx
+fi
 wait_for_service_health app 45
 wait_for_readiness
 record_deployed_at

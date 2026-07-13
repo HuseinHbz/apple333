@@ -42,6 +42,15 @@ load_environment
 require_docker_runtime
 docker "$kind" inspect "$name" >/dev/null 2>&1 || die "Resource does not exist: $kind/$name"
 
+classification="$(docker_resource_classification "$kind" "$name")"
+case "$classification" in
+  FOREIGN) ;;
+  OWNED_CURRENT|OWNED_OTHER_APPLE333)
+    die "Refusing to purge an Apple333-managed resource through the unrelated-resource command; use the managed uninstall workflow"
+    ;;
+  *) die "Unable to prove this resource is foreign: $kind/$name ($classification)" ;;
+esac
+
 warn "This is an unrelated or unverified Docker $kind. It will be permanently removed."
 warn "The command never uses docker system prune and affects only: $kind/$name"
 confirm_typed "PURGE UNRELATED $kind $name" "Confirm that you have an independent backup and want to delete this exact resource."

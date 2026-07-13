@@ -42,6 +42,7 @@ acquire_deploy_lock
 
 postgres_volume="${COMPOSE_PROJECT_NAME}_postgres_data"
 redis_volume="${COMPOSE_PROJECT_NAME}_redis_data"
+minio_volume="${COMPOSE_PROJECT_NAME}_minio_data"
 
 if [[ "$purge_data" == true ]]; then
   log "Starting only managed PostgreSQL long enough to verify ownership and create a backup."
@@ -61,7 +62,8 @@ if [[ "$purge_data" == true ]]; then
   [[ "$(docker_resource_classification volume "$redis_volume")" == "OWNED_CURRENT" ]] || die "Redis volume ownership changed; refusing purge"
   docker volume rm "$postgres_volume" "$redis_volume"
   rm -f "$STATE_FILE"
-  log "Removed only the explicitly confirmed Apple333 data volumes. Source, secrets, and backups were retained."
+  warn "The verified MinIO volume ($minio_volume) was retained. Object-storage deletion requires a separately approved backup and purge procedure."
+  log "Removed only the explicitly confirmed Apple333 PostgreSQL and Redis data volumes. Source, secrets, object storage, and backups were retained."
 else
   log "Application services were removed; verified data volumes and ownership markers remain for safe recovery."
 fi

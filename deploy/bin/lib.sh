@@ -35,6 +35,40 @@ has_placeholder() {
   [[ -z "$value" || "$value" == *"replace-with"* || "$value" == *"change-me"* || "$value" == *"example.com"* || "$value" == *"<"* ]]
 }
 
+load_environment_file() {
+  # Do not source a server-controlled .env file. A malicious assignment in an
+  # env file must never gain shell execution through a deployment command.
+  local line key value
+  local -A allowed=([
+APPLE333_PROJECT_ID]=1 [APPLE333_ENVIRONMENT]=1 [COMPOSE_PROJECT_NAME]=1
+[APPLE333_INSTALL_ROOT]=1 [APPLE333_STATE_DIR]=1 [APPLE333_BACKUP_DIR]=1
+[APPLE333_INSTALL_ID]=1 [APPLE333_HTTP_BIND]=1 [APPLE333_HTTP_PORT]=1
+[NODE_ENV]=1 [APP_NAME]=1 [APP_URL]=1 [AUTH_URL]=1 [NEXTAUTH_URL]=1
+[AUTH_SECRET]=1 [NEXTAUTH_SECRET]=1 [POSTGRES_DB]=1 [POSTGRES_SCHEMA]=1
+[POSTGRES_USER]=1 [POSTGRES_PASSWORD]=1 [DATABASE_URL]=1 [REDIS_URL]=1
+[REDIS_PASSWORD]=1 [MINIO_ROOT_USER]=1 [MINIO_ROOT_PASSWORD]=1
+[APPLE333_MINIO_IMAGE]=1 [PROMETHEUS_RETENTION_TIME]=1 [GRAFANA_HTTP_PORT]=1
+[GRAFANA_ADMIN_USER]=1 [GRAFANA_ADMIN_PASSWORD]=1 [SENTRY_DSN]=1
+[SENTRY_ENVIRONMENT]=1 [SENTRY_TRACES_SAMPLE_RATE]=1 [S3_ENDPOINT]=1
+[S3_REGION]=1 [S3_BUCKET]=1 [S3_ACCESS_KEY]=1 [S3_SECRET_KEY]=1
+[APPLE333_BACKUP_AGE_RECIPIENT]=1 [APPLE333_BACKUP_AGE_IDENTITY_FILE]=1
+[APPLE333_BACKUP_OFFSITE_DIR]=1 [APPLE333_BACKUP_RETENTION_DAYS]=1)
+  local -A seen=()
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] || die "Invalid environment line in $ENV_FILE; use plain KEY=value assignments only"
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    [[ -n "${allowed[$key]:-}" ]] || die "Unsupported environment key in $ENV_FILE: $key"
+    [[ -z "${seen[$key]:-}" ]] || die "Duplicate environment key in $ENV_FILE: $key"
+    seen[$key]=1
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$ENV_FILE"
+}
+
 load_environment() {
   [[ -f "$ENV_FILE" ]] || die "Missing production config: $ENV_FILE. Copy deploy/.env.production.example first."
   [[ -f "$COMPOSE_FILE" ]] || die "Missing deployment compose file: $COMPOSE_FILE"
@@ -43,14 +77,11 @@ load_environment() {
   local mode
   mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || true)"
   [[ -z "$mode" || "$mode" =~ ^[0-7]{3,4}$ ]] || die "Cannot determine permissions for $ENV_FILE"
-  if [[ -n "$mode" && "${mode: -1}" != "0" ]]; then
-    warn "$ENV_FILE is world-readable. Set chmod 600 before production deployment."
+  if [[ -n "$mode" && "$mode" != "600" ]]; then
+    die "$ENV_FILE must use chmod 600 before a production deployment"
   fi
 
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+  load_environment_file
 
   : "${APPLE333_PROJECT_ID:?APPLE333_PROJECT_ID is required}"
   : "${APPLE333_ENVIRONMENT:?APPLE333_ENVIRONMENT is required}"
@@ -68,6 +99,10 @@ load_environment() {
   : "${POSTGRES_SCHEMA:?POSTGRES_SCHEMA is required}"
   : "${POSTGRES_USER:?POSTGRES_USER is required}"
   : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+  : "${REDIS_URL:?REDIS_URL is required}"
+  : "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+  : "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+  : "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
 
   [[ "$APPLE333_PROJECT_ID" == "$PROJECT_KEY" ]] || die "APPLE333_PROJECT_ID must be $PROJECT_KEY"
   [[ "$APPLE333_ENVIRONMENT" =~ ^[a-z][a-z0-9-]{1,31}$ ]] || die "APPLE333_ENVIRONMENT contains unsafe characters"
@@ -79,12 +114,19 @@ load_environment() {
   [[ "$POSTGRES_DB" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || die "POSTGRES_DB contains unsafe characters"
   [[ "$POSTGRES_SCHEMA" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || die "POSTGRES_SCHEMA contains unsafe characters"
   [[ "$POSTGRES_SCHEMA" != "public" ]] || die "POSTGRES_SCHEMA must be dedicated to Apple333; public is not permitted"
+  [[ "$APPLE333_HTTP_BIND" == "127.0.0.1" || "$APPLE333_HTTP_BIND" == "::1" ]] || die "APPLE333_HTTP_BIND must be loopback-only; terminate TLS at the approved public edge"
   [[ "$APPLE333_HTTP_PORT" =~ ^[0-9]{2,5}$ ]] || die "APPLE333_HTTP_PORT must be numeric"
+  [[ -z "${APPLE333_INSTALL_ID:-}" || "$APPLE333_INSTALL_ID" =~ ^[a-f0-9]{32}$ ]] || die "APPLE333_INSTALL_ID must be a 32-character lowercase hexadecimal value"
   [[ ${#AUTH_SECRET} -ge 32 ]] || die "AUTH_SECRET must be at least 32 characters"
   [[ "$AUTH_SECRET" =~ ^[A-Za-z0-9._~+/=-]+$ ]] || die "AUTH_SECRET must be shell-safe base64/hex; use openssl rand -hex 32"
   [[ "$POSTGRES_PASSWORD" =~ ^[A-Za-z0-9._~-]{20,}$ ]] || die "POSTGRES_PASSWORD must be a shell-safe value of at least 20 characters; use openssl rand -hex 32"
+  [[ "$REDIS_PASSWORD" =~ ^[A-Za-z0-9._~-]{20,}$ ]] || die "REDIS_PASSWORD must be a shell-safe value of at least 20 characters; use openssl rand -hex 32"
+  [[ "$MINIO_ROOT_USER" =~ ^[A-Za-z0-9][A-Za-z0-9._~-]{2,63}$ ]] || die "MINIO_ROOT_USER contains unsafe characters or is too short"
+  [[ "$MINIO_ROOT_PASSWORD" =~ ^[A-Za-z0-9._~-]{20,}$ ]] || die "MINIO_ROOT_PASSWORD must be a shell-safe value of at least 20 characters; use openssl rand -hex 32"
   has_placeholder "$AUTH_SECRET" && die "AUTH_SECRET still contains a placeholder"
   has_placeholder "$POSTGRES_PASSWORD" && die "POSTGRES_PASSWORD still contains a placeholder"
+  has_placeholder "$REDIS_PASSWORD" && die "REDIS_PASSWORD still contains a placeholder"
+  has_placeholder "$MINIO_ROOT_PASSWORD" && die "MINIO_ROOT_PASSWORD still contains a placeholder"
   has_placeholder "$APP_URL" && die "APP_URL still contains a placeholder"
   [[ "$APP_URL" =~ ^https:// ]] || die "APP_URL must use HTTPS in production"
   [[ "$AUTH_URL" == "$APP_URL" ]] || die "AUTH_URL must match APP_URL"
@@ -93,6 +135,7 @@ load_environment() {
   [[ "$DATABASE_URL" == postgresql://* ]] || die "DATABASE_URL must use the PostgreSQL URL scheme"
   [[ "$DATABASE_URL" == *"@postgres:5432/${POSTGRES_DB}"* ]] || die "This managed deployment bundle only supports its labelled postgres service; do not point it at an external/shared database"
   [[ "$DATABASE_URL" == *"schema=$POSTGRES_SCHEMA"* ]] || die "DATABASE_URL must target schema=$POSTGRES_SCHEMA"
+  [[ "$REDIS_URL" == "redis://:$REDIS_PASSWORD@redis:6379"* ]] || die "REDIS_URL must target the authenticated managed redis service"
   [[ "$(canonical_path "$APPLE333_INSTALL_ROOT")" == "$REPO_ROOT" ]] || die "APPLE333_INSTALL_ROOT must resolve to this checkout: $REPO_ROOT"
   [[ "$REPO_ROOT" != "/" ]] || die "Refusing to operate from filesystem root"
 
@@ -117,6 +160,18 @@ ensure_install_id() {
 
 compose() {
   docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+build_release_images() {
+  # Build app and migrator from the current, reviewed checkout before a schema
+  # change. This prevents a migration container from reusing a stale image.
+  compose --profile migration build app migrate
+}
+
+run_prisma() {
+  # The PostgreSQL health check is already awaited by the caller. Do not allow
+  # Compose to start unrelated dependencies for a one-shot migration command.
+  compose --profile migration run --rm --no-deps migrate pnpm prisma "$@"
 }
 
 require_docker_runtime() {
@@ -252,17 +307,35 @@ set_database_marker_status() {
 }
 
 backup_database() {
-  local container timestamp output
+  : "${APPLE333_BACKUP_AGE_RECIPIENT:?APPLE333_BACKUP_AGE_RECIPIENT is required for encrypted database backups}"
+  has_placeholder "$APPLE333_BACKUP_AGE_RECIPIENT" && die "APPLE333_BACKUP_AGE_RECIPIENT still contains a placeholder"
+  require_command age
+
+  local container timestamp output temporary checksum output_name
   container="$(postgres_container_id)"
   [[ -n "$container" ]] || die "Cannot back up: managed PostgreSQL container was not found"
   mkdir -p "$APPLE333_BACKUP_DIR"
   chmod 700 "$APPLE333_BACKUP_DIR" || true
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  output="$APPLE333_BACKUP_DIR/${APPLE333_ENVIRONMENT}-${POSTGRES_DB}-${timestamp}.dump"
+  output="$APPLE333_BACKUP_DIR/${APPLE333_ENVIRONMENT}-${POSTGRES_DB}-${APPLE333_INSTALL_ID}-${timestamp}.dump.age"
+  temporary="$(mktemp "$APPLE333_BACKUP_DIR/.${APPLE333_ENVIRONMENT}-${POSTGRES_DB}-${APPLE333_INSTALL_ID}-${timestamp}.XXXXXX")"
+  checksum="${output}.sha256"
+  output_name="$(basename "$output")"
   umask 077
-  docker exec -e "PGPASSWORD=$POSTGRES_PASSWORD" "$container" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > "$output"
-  [[ -s "$output" ]] || die "Database backup file is empty: $output"
-  log "Created database backup: $output"
+  trap 'rm -f "$temporary"' RETURN
+  docker exec -e "PGPASSWORD=$POSTGRES_PASSWORD" "$container" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
+    | age -r "$APPLE333_BACKUP_AGE_RECIPIENT" > "$temporary"
+  [[ -s "$temporary" ]] || die "Encrypted database backup file is empty"
+  mv "$temporary" "$output"
+  # Keep the manifest path relative so the copied checksum validates the file
+  # at its destination, never a similarly named local source artifact.
+  (cd "$APPLE333_BACKUP_DIR" && sha256sum "$output_name" > "$(basename "$checksum")")
+  chmod 600 "$output" "$checksum"
+  BACKUP_DATABASE_OUTPUT="$output"
+  BACKUP_DATABASE_CHECKSUM="$checksum"
+  export BACKUP_DATABASE_OUTPUT BACKUP_DATABASE_CHECKSUM
+  trap - RETURN
+  log "Created encrypted database backup: $output"
 }
 
 wait_for_service_health() {
@@ -281,7 +354,7 @@ wait_for_readiness() {
   require_command curl
   local host="127.0.0.1" attempt
   for ((attempt = 1; attempt <= 30; attempt += 1)); do
-    if curl --fail --silent --show-error "http://$host:$APPLE333_HTTP_PORT/api/ready" >/dev/null; then
+    if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "http://$host:$APPLE333_HTTP_PORT/api/ready" >/dev/null; then
       return 0
     fi
     sleep 2
