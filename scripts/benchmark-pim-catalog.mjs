@@ -19,6 +19,7 @@ const DEFAULT_BATCH_SIZE = 500;
 const DEFAULT_EXPLAIN_RUNS = 5;
 const DEFAULT_API_REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_API_P95_THRESHOLD_MS = 3_000;
+const DEFAULT_QUERY_P95_THRESHOLD_MS = 250;
 const MIN_BATCH_SIZE = 100;
 const MAX_BATCH_SIZE = 1_000;
 const MIN_EXPLAIN_RUNS = 3;
@@ -27,6 +28,8 @@ const MIN_API_REQUEST_TIMEOUT_MS = 250;
 const MAX_API_REQUEST_TIMEOUT_MS = 30_000;
 const MIN_API_P95_THRESHOLD_MS = 100;
 const MAX_API_P95_THRESHOLD_MS = 30_000;
+const MIN_QUERY_P95_THRESHOLD_MS = 10;
+const MAX_QUERY_P95_THRESHOLD_MS = 30_000;
 const MAX_API_RESPONSE_BYTES = 1_000_000;
 const REQUIRED_TABLES = Object.freeze([
   "CatalogCategory",
@@ -92,6 +95,13 @@ export function resolvePimBenchmarkApiOptions(environment = process.env) {
     MAX_API_P95_THRESHOLD_MS,
     "PIM_BENCHMARK_API_P95_MS",
   );
+  const queryP95ThresholdMs = parseBoundedInteger(
+    environment.PIM_BENCHMARK_QUERY_P95_MS,
+    DEFAULT_QUERY_P95_THRESHOLD_MS,
+    MIN_QUERY_P95_THRESHOLD_MS,
+    MAX_QUERY_P95_THRESHOLD_MS,
+    "PIM_BENCHMARK_QUERY_P95_MS",
+  );
   if (p95ThresholdMs > requestTimeoutMs) {
     throw new Error(
       "PIM_BENCHMARK_API_P95_MS must be less than or equal to PIM_BENCHMARK_API_TIMEOUT_MS.",
@@ -102,6 +112,7 @@ export function resolvePimBenchmarkApiOptions(environment = process.env) {
     baseUrl: new URL(PIM_BENCHMARK_API_BASE_URL),
     requestTimeoutMs,
     p95ThresholdMs,
+    queryP95ThresholdMs,
   };
 }
 
@@ -208,7 +219,7 @@ function benchmarkContext(runId) {
 
 function usage() {
   console.log(
-    `Phase 04.1 isolated PIM benchmark\n\nRequired environment:\n  NODE_ENV=test\n  APPLE333_PIM_TEST_DB=1\n  PIM_TEST_DATABASE_URL=postgresql://apple333_pim_test:<password>@127.0.0.1:55432/apple333_pim_test?schema=public\n  PIM_BENCHMARK_ALLOW_SEED=1\n  PIM_BENCHMARK_RUN_ID=<unique-8-to-40-char-lowercase-id>\n  PIM_BENCHMARK_API_BASE_URL=${PIM_BENCHMARK_API_BASE_URL}\n\nOptional:\n  PIM_BENCHMARK_BATCH_SIZE=100..1000 (default ${DEFAULT_BATCH_SIZE})\n  PIM_BENCHMARK_EXPLAIN_RUNS=3..9 (default ${DEFAULT_EXPLAIN_RUNS})\n  PIM_BENCHMARK_API_TIMEOUT_MS=${MIN_API_REQUEST_TIMEOUT_MS}..${MAX_API_REQUEST_TIMEOUT_MS} (default ${DEFAULT_API_REQUEST_TIMEOUT_MS})\n  PIM_BENCHMARK_API_P95_MS=${MIN_API_P95_THRESHOLD_MS}..${MAX_API_P95_THRESHOLD_MS} (default ${DEFAULT_API_P95_THRESHOLD_MS})\n\nThe command creates retained, run-marked fixtures only in the guarded test database. It never performs cleanup; dispose of the isolated database outside this harness. The public API must already be running at the exact guarded base URL.\n\nRun:\n  node scripts/benchmark-pim-catalog.mjs --execute`,
+    `Phase 04.1 isolated PIM benchmark\n\nRequired environment:\n  NODE_ENV=test\n  APPLE333_PIM_TEST_DB=1\n  PIM_TEST_DATABASE_URL=postgresql://apple333_pim_test:<password>@127.0.0.1:55432/apple333_pim_test?schema=public\n  PIM_BENCHMARK_ALLOW_SEED=1\n  PIM_BENCHMARK_RUN_ID=<unique-8-to-40-char-lowercase-id>\n  PIM_BENCHMARK_API_BASE_URL=${PIM_BENCHMARK_API_BASE_URL}\n\nOptional:\n  PIM_BENCHMARK_BATCH_SIZE=100..1000 (default ${DEFAULT_BATCH_SIZE})\n  PIM_BENCHMARK_EXPLAIN_RUNS=3..9 (default ${DEFAULT_EXPLAIN_RUNS})\n  PIM_BENCHMARK_API_TIMEOUT_MS=${MIN_API_REQUEST_TIMEOUT_MS}..${MAX_API_REQUEST_TIMEOUT_MS} (default ${DEFAULT_API_REQUEST_TIMEOUT_MS})\n  PIM_BENCHMARK_API_P95_MS=${MIN_API_P95_THRESHOLD_MS}..${MAX_API_P95_THRESHOLD_MS} (default ${DEFAULT_API_P95_THRESHOLD_MS})\n  PIM_BENCHMARK_QUERY_P95_MS=${MIN_QUERY_P95_THRESHOLD_MS}..${MAX_QUERY_P95_THRESHOLD_MS} (default ${DEFAULT_QUERY_P95_THRESHOLD_MS})\n\nThe command creates retained, run-marked fixtures only in the guarded test database. It never performs cleanup; dispose of the isolated database outside this harness. The public API must already be running at the exact guarded base URL.\n\nRun:\n  node scripts/benchmark-pim-catalog.mjs --execute`,
   );
 }
 
@@ -712,6 +723,16 @@ function apiBenchmarkViolations(scale, paths, p95ThresholdMs) {
   });
 }
 
+function queryBenchmarkViolations(scale, paths, p95ThresholdMs) {
+  return paths.flatMap((path) =>
+    path.executionMs.p95 > p95ThresholdMs
+      ? [
+          `${scale}:${path.path} query p95=${path.executionMs.p95}ms exceeds ${p95ThresholdMs}ms.`,
+        ]
+      : [],
+  );
+}
+
 async function explainPublicListing(prisma) {
   return prisma.$queryRaw`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
@@ -877,11 +898,16 @@ async function runScaleBenchmark(
     apiPaths,
     apiOptions.p95ThresholdMs,
   );
+  const queryViolations = queryBenchmarkViolations(
+    scale,
+    paths,
+    apiOptions.queryP95ThresholdMs,
+  );
 
   const evidence = {
     scale,
     seed: seedResult,
-    paths,
+    query: { p95ThresholdMs: apiOptions.queryP95ThresholdMs, paths },
     api: {
       baseUrl: PIM_BENCHMARK_API_BASE_URL,
       samplesPerPath: PIM_BENCHMARK_HTTP_SAMPLE_COUNT,
@@ -891,7 +917,7 @@ async function runScaleBenchmark(
     },
   };
   console.log(`PIM_BENCHMARK_EVIDENCE ${JSON.stringify(evidence)}`);
-  return apiViolations;
+  return [...apiViolations, ...queryViolations];
 }
 
 async function executeBenchmark(environment) {
@@ -923,7 +949,7 @@ async function executeBenchmark(environment) {
 
     let seeded = 0;
     let workflowFixtureCreated = false;
-    const apiViolations = [];
+    const qualityGateViolations = [];
     for (const scale of PIM_BENCHMARK_SCALES) {
       const seedResult = await seedToScale(
         prisma,
@@ -938,7 +964,7 @@ async function executeBenchmark(environment) {
         workflowFixtureCreated = true;
       }
       await refreshBenchmarkPlannerStatistics(prisma);
-      apiViolations.push(
+      qualityGateViolations.push(
         ...(await runScaleBenchmark(
           prisma,
           context,
@@ -949,9 +975,9 @@ async function executeBenchmark(environment) {
         )),
       );
     }
-    if (apiViolations.length > 0) {
+    if (qualityGateViolations.length > 0) {
       throw new Error(
-        `PIM benchmark API quality gate failed: ${apiViolations.join(" ")}`,
+        `PIM benchmark quality gate failed: ${qualityGateViolations.join(" ")}`,
       );
     }
   } finally {

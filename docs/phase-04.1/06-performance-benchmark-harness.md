@@ -51,6 +51,8 @@ Optional bounded tuning is available through `PIM_BENCHMARK_BATCH_SIZE`
 `PIM_BENCHMARK_API_TIMEOUT_MS` (250–30,000, default 10,000), and
 `PIM_BENCHMARK_API_P95_MS` (100–30,000, default 3,000). The p95 value must
 not exceed the request timeout and is enforced as the HTTP quality gate.
+`PIM_BENCHMARK_QUERY_P95_MS` (10–30,000, default 250) is the per-query
+`EXPLAIN` execution-time p95 quality gate.
 
 ## What it measures
 
@@ -77,7 +79,9 @@ For the four public HTTP endpoints, it also makes five bounded `GET` samples
 at each scale: listing, category-filtered listing, detail, and categories. It
 records p50/p95 end-to-end response time, status distribution, response byte
 count, and JSON shape metadata. A non-200 result or p95 latency above the
-explicit threshold fails the benchmark.
+explicit threshold fails the benchmark. Each query path also fails the
+benchmark when its repeated `EXPLAIN` execution-time p95 exceeds the explicit
+query threshold.
 
 The emitted `PIM_BENCHMARK_EVIDENCE` JSON contains only scale, seed duration,
 p50/p95 planning and execution times, rows, root node type, buffer counts,
