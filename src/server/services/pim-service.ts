@@ -1038,58 +1038,62 @@ async function assertProductSlugAvailable(slug: string, excludedId: string | und
 }
 
 export async function createAdminProduct(input: CreateProductInput, context: AdminAuditContext): Promise<AdminProductDetailDto> {
+  // Route handlers validate this already, but services are also called by
+  // import and trusted internal workflows. Parse here so Zod defaults for
+  // variants, specifications, flags, scope, and sort order are never skipped.
+  const productInput = createProductInput.parse(input);
   const audit = requireAuditContext(context);
   const productId = await prisma.$transaction(async (transaction) => {
-    await assertActiveCategory(input.categoryId, transaction);
-    const brand = await activeBrandName(input.brandId, transaction);
-    await assertProductSlugAvailable(input.slug, undefined, transaction);
-    await Promise.all(input.variants.map((variant) => validateVariantInput(variant, transaction)));
-    assertUniqueVariantOptions(input.variants);
+    await assertActiveCategory(productInput.categoryId, transaction);
+    const brand = await activeBrandName(productInput.brandId, transaction);
+    await assertProductSlugAvailable(productInput.slug, undefined, transaction);
+    await Promise.all(productInput.variants.map((variant) => validateVariantInput(variant, transaction)));
+    assertUniqueVariantOptions(productInput.variants);
 
     const productData: Prisma.CatalogProductCreateInput = {
-        ...(input.categoryId === undefined || input.categoryId === null ? {} : { category: { connect: { id: input.categoryId } } }),
-        ...(input.brandId === undefined || input.brandId === null ? {} : { brandRecord: { connect: { id: input.brandId } } }),
-        slug: input.slug,
-        name: input.name,
+        ...(productInput.categoryId === undefined || productInput.categoryId === null ? {} : { category: { connect: { id: productInput.categoryId } } }),
+        ...(productInput.brandId === undefined || productInput.brandId === null ? {} : { brandRecord: { connect: { id: productInput.brandId } } }),
+        slug: productInput.slug,
+        name: productInput.name,
         brand: brand?.name ?? 'Apple',
         searchText: buildProductSearchText({
-          name: input.name,
-          slug: input.slug,
+          name: productInput.name,
+          slug: productInput.slug,
           brand: brand?.name ?? 'Apple',
-          skuCodes: input.variants.map((variant) => variant.skuCode),
-          specificationValues: input.specifications.map((specification) => specification.displayValue),
+          skuCodes: productInput.variants.map((variant) => variant.skuCode),
+          specificationValues: productInput.specifications.map((specification) => specification.displayValue),
         }),
-        ...(input.summary === undefined ? {} : { summary: input.summary }),
-        ...(input.description === undefined ? {} : { description: input.description }),
-        isFeatured: input.isFeatured,
-        ...(input.featuredRank === undefined ? {} : { featuredRank: input.featuredRank }),
-        isNew: input.isNew,
-        isOnSale: input.isOnSale,
-        ...(input.seo === undefined ? {} : {
-          ...(input.seo.metaTitle === undefined ? {} : { seoTitle: input.seo.metaTitle }),
-          ...(input.seo.metaDescription === undefined ? {} : { seoDescription: input.seo.metaDescription }),
+        ...(productInput.summary === undefined ? {} : { summary: productInput.summary }),
+        ...(productInput.description === undefined ? {} : { description: productInput.description }),
+        isFeatured: productInput.isFeatured,
+        ...(productInput.featuredRank === undefined ? {} : { featuredRank: productInput.featuredRank }),
+        isNew: productInput.isNew,
+        isOnSale: productInput.isOnSale,
+        ...(productInput.seo === undefined ? {} : {
+          ...(productInput.seo.metaTitle === undefined ? {} : { seoTitle: productInput.seo.metaTitle }),
+          ...(productInput.seo.metaDescription === undefined ? {} : { seoDescription: productInput.seo.metaDescription }),
           seo: {
             create: {
-              ...(input.seo.metaTitle === undefined ? {} : { metaTitle: input.seo.metaTitle }),
-              ...(input.seo.metaDescription === undefined ? {} : { metaDescription: input.seo.metaDescription }),
-              ...(input.seo.canonicalUrl === undefined ? {} : { canonicalUrl: input.seo.canonicalUrl }),
-              ...(input.seo.schemaData === undefined ? {} : { schemaData: jsonInput(input.seo.schemaData) ?? Prisma.JsonNull }),
-              noIndex: input.seo.noIndex ?? false,
+              ...(productInput.seo.metaTitle === undefined ? {} : { metaTitle: productInput.seo.metaTitle }),
+              ...(productInput.seo.metaDescription === undefined ? {} : { metaDescription: productInput.seo.metaDescription }),
+              ...(productInput.seo.canonicalUrl === undefined ? {} : { canonicalUrl: productInput.seo.canonicalUrl }),
+              ...(productInput.seo.schemaData === undefined ? {} : { schemaData: jsonInput(productInput.seo.schemaData) ?? Prisma.JsonNull }),
+              noIndex: productInput.seo.noIndex ?? false,
             },
           },
         }),
-        variants: { create: input.variants.map(variantCreateData) },
+        variants: { create: productInput.variants.map(variantCreateData) },
       };
     const product = await transaction.catalogProduct.create({
       data: productData,
       select: { id: true, variants: { select: { id: true, sku: true } } },
     });
 
-    const specificationRows = await resolveSpecificationTargets(product.id, input.categoryId ?? null, product.variants, input.specifications, transaction);
+    const specificationRows = await resolveSpecificationTargets(product.id, productInput.categoryId ?? null, product.variants, productInput.specifications, transaction);
     if (specificationRows.length > 0) await transaction.productSpecification.createMany({ data: specificationRows });
     await auditLogRepository.create(auditInput(audit, {
       action: 'pim.product.created', entityType: 'CatalogProduct', entityId: product.id,
-      metadata: { slug: input.slug, variantCount: input.variants.length, specificationCount: input.specifications.length },
+      metadata: { slug: productInput.slug, variantCount: productInput.variants.length, specificationCount: productInput.specifications.length },
     }), transaction);
     return product.id;
   });
