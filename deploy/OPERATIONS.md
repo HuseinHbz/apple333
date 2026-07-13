@@ -27,18 +27,21 @@ place; provision a new isolated deployment or follow a reviewed migration plan.
 
 ## Backup and restore
 
-`update.sh --apply --apply-migrations` and data purge create custom-format
-PostgreSQL backups under `APPLE333_BACKUP_DIR`.
+`update.sh --apply --apply-migrations` and data purge create encrypted
+custom-format PostgreSQL backups under `APPLE333_BACKUP_DIR`. They require the
+protected `APPLE333_BACKUP_AGE_RECIPIENT` configuration.
 
-To inspect a backup without restoring it:
+Run a safe periodic backup and an isolated restore drill:
 
 ```bash
-pg_restore --list /var/lib/apple333/backups/<file>.dump
+bash scripts/backup-db.sh --apply --prune-retention
+bash scripts/restore-db-drill.sh --apply --backup /var/lib/apple333/backups/<file>.dump.age
 ```
 
-Restoration is intentionally manual. Stop the application, verify a compatible
-release and target database, obtain approval, then use PostgreSQL tools under a
-separate recovery runbook. Never restore into a shared/foreign schema.
+The restore drill creates a labelled ephemeral PostgreSQL target only; it never
+targets the live database or a persistent volume. Production recovery remains a
+separately approved incident procedure. Never restore into a shared/foreign
+schema.
 
 ## Reverse proxy and TLS
 
@@ -54,5 +57,7 @@ certificate configuration; configure a new Apple333 hostname explicitly.
 | HTTP port occupied | Choose another Apple333 port or update the existing proxy; never kill the unknown process automatically. |
 | Database marker missing | Stop. Confirm whether the schema is empty, legacy Apple333, or foreign before any action. |
 | `ready` returns 503 | Inspect `docker compose ... logs app postgres`; check `.env.production` and database credentials. |
+| `ready` reports Redis unavailable | Check the private Redis container, `REDIS_PASSWORD`, and the authenticated `REDIS_URL`; do not expose or replace Redis blindly. |
+| Backup refuses to run | Verify age recipient, off-host path, permissions, and current ownership; do not use an unencrypted ad-hoc dump as a substitute. |
 | Update fails after migration | Keep services/data, inspect the backup and migration logs, then perform a reviewed recovery. |
 | State marker mismatch | Do not edit it manually. Treat the deployment as another/legacy environment until ownership is proven. |

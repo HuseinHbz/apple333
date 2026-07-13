@@ -7,7 +7,9 @@
   prune`, `docker compose down -v`, blanket `rm -rf`, or automatic seeding.
 - Production database changes require reviewed Prisma migrations. A missing
   migration bundle is a hard stop, not permission to infer a schema.
-- Secrets are never printed, committed, or copied into deployment state.
+- Secrets are never printed, committed, or copied into deployment state. The
+  protected env parser accepts only a declared plain `KEY=value` allowlist and
+  is never shell-sourced.
 - No foreign/ambiguous resource is reused, replaced, stopped, or deleted
   automatically.
 
@@ -55,10 +57,13 @@ needs a separate owner-approved, backup-verified procedure outside this bundle.
 
 ## Data retention and recovery
 
-- Default uninstall retains PostgreSQL and Redis volumes, state, secret config,
-  checkout, and backups.
-- A data purge first makes a custom-format `pg_dump` backup, then requires a
+- Default uninstall retains PostgreSQL, Redis, and MinIO volumes, state, secret
+  config, checkout, and backups.
+- A PostgreSQL/Redis data purge first makes an encrypted custom-format `pg_dump`
+  backup, then requires a
   typed Apple333-specific confirmation.
+- MinIO/object-storage data has no automatic purge path until an approved object
+  backup and restore procedure exists.
 - A failed install/update marks the database marker as `failed` when possible
   and preserves resources for inspection. Do not rerun install blindly; use
   preflight and investigate the marker/status first.

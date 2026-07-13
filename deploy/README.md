@@ -38,18 +38,23 @@ automatically.
 | Path | Purpose |
 | --- | --- |
 | `.env.production.example` | Non-secret production configuration template |
-| `compose.production.yml` | Isolated app, nginx, PostgreSQL, and Redis stack |
+| `compose.production.yml` | Canonical isolated app, one-shot migration task, nginx, PostgreSQL, Redis, MinIO, and optional observability stack |
+| `monitoring/` | Private Prometheus scrape/alert rules and Grafana datasource provisioning |
+| `nginx.public-edge.conf.template` | Reviewed opt-in public TLS/redirect configuration template |
+| `systemd/` | Uninstalled, site-reviewed encrypted-backup service/timer templates |
 | `bin/preflight.sh` | Read-only ownership/dependency inspection |
 | `bin/install.sh` | Fresh installation after explicit `--apply` |
 | `bin/update.sh` | Safe release update with explicit migration decision |
 | `bin/status.sh` | Read-only Compose/readiness status |
 | `bin/uninstall.sh` | Stop services; data purge is separately confirmed |
 | `bin/purge-unrelated.sh` | Narrow manual cleanup for one named Docker volume/network |
+| `../scripts/backup-db.sh` | Explicit encrypted PostgreSQL backup with checksum-verified secondary copy |
+| `../scripts/restore-db-drill.sh` | Explicit isolated encrypted-backup restore drill |
 
 ## Server prerequisites
 
 - Linux server with Docker Engine and Docker Compose v2;
-- `bash`, `realpath`, `openssl`, `flock`, `curl`, and standard GNU user tools;
+- `bash`, `realpath`, `openssl`, `flock`, `curl`, `age`, and standard GNU user tools;
 - an HTTPS reverse proxy or load balancer in front of the loopback-bound nginx
   port; and
 - a dedicated `/opt/apple333` checkout and `/var/lib/apple333` state/backup
@@ -74,7 +79,11 @@ cd /opt/apple333
 cp deploy/.env.production.example deploy/.env.production
 chmod 600 deploy/.env.production
 # Edit every placeholder. Use a dedicated PostgreSQL schema such as apple333.
-# Generate AUTH_SECRET and POSTGRES_PASSWORD with: openssl rand -hex 32
+# Generate AUTH_SECRET, PostgreSQL, Redis, MinIO, and Grafana passwords with:
+# openssl rand -hex 32
+# Configure an approved age recipient and a separate encrypted backup path.
+# Independently verify that the second path is truly off-host/offsite before
+# relying on it for recovery; a different local pathname is not enough.
 
 bash deploy/bin/preflight.sh
 # After a reviewed Prisma migration bundle exists:
@@ -102,9 +111,9 @@ bash deploy/bin/update.sh --apply --skip-migrations
 bash deploy/bin/update.sh --apply --apply-migrations
 ```
 
-`--apply-migrations` creates a PostgreSQL custom-format backup first. The
-script does not attempt an automatic database rollback because migrations may
-not be reversible.
+`--apply-migrations` creates an encrypted PostgreSQL custom-format backup first.
+The script requires the configured `age` recipient and does not attempt an
+automatic database rollback because migrations may not be reversible.
 
 ## Routine code update
 
@@ -127,11 +136,36 @@ docker compose --project-name apple333-production \
   --env-file deploy/.env.production -f deploy/compose.production.yml logs -f app
 ```
 
-Liveness is `/api/health`; deployment readiness is `/api/ready` and includes a
-configuration plus PostgreSQL query check.
+Liveness is `/api/health`; deployment readiness is `/api/ready` and includes
+configuration, PostgreSQL, and authenticated Redis checks. Prometheus reaches
+`/api/metrics` directly from the private monitoring profile; the endpoint is
+disabled by default, explicitly enabled only for the managed app service, and
+nginx returns 404 for public metric requests.
 
 Repository contributors can run `pnpm test:deploy` to verify the static safety
 invariants for labels, maintenance policy, and destructive-operation guards.
+
+## Backup schedule, observability, and CI/CD handoff
+
+The backup script can copy an encrypted artifact to a separately configured
+path, but it cannot prove that path is an independent host, mount, or storage
+failure domain. The operator must establish and record that evidence, configure
+alerting, and run an isolated restore drill before treating backups as a
+production recovery control.
+
+`systemd/apple333-backup.service` and `.timer` are uninstalled templates. Do
+not enable them until the exact account, protected external environment file,
+destination mount, notification route, one-shot backup, and restore drill have
+been reviewed. The complete procedure is in
+[the Phase 01 backup guide](../docs/phase-01/05-backup-guide.md).
+
+Prometheus/Grafana are an optional private Compose profile, not evidence of
+working dashboards or alert delivery. Use the
+[monitoring guide](../docs/phase-01/04-monitoring-guide.md) for the
+ownership-aware operator procedure. GitHub deployment workflows likewise need
+protected branches, Environments/reviewers, isolated runners, and protected
+server environment files; see the
+[CI/CD operations runbook](../docs/phase-01/ci-cd-operations.md).
 
 ## Removal
 
@@ -139,13 +173,15 @@ invariants for labels, maintenance policy, and destructive-operation guards.
 # Stop/remove Apple333 containers and network; retain data and configuration.
 bash deploy/bin/uninstall.sh --apply
 
-# Create a backup, then remove only verified Apple333 PostgreSQL/Redis volumes.
+# Create an encrypted backup, then remove only verified PostgreSQL/Redis volumes.
 bash deploy/bin/uninstall.sh --apply --purge-owned-data
 ```
 
 The purge command requires a typed confirmation. It retains the source
-checkout, `.env.production`, and backup files. It never calls `docker system
-prune`, `docker compose down -v`, `prisma migrate reset`, or `DROP DATABASE`.
+checkout, `.env.production`, encrypted backup files, and MinIO object-storage
+volume because object deletion needs its own approved backup/purge plan. It
+never calls `docker system prune`, `docker compose down -v`, `prisma migrate
+reset`, or `DROP DATABASE`.
 
 ## Existing resources and foreign data
 
