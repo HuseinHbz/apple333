@@ -159,9 +159,20 @@ describe.sequential('Phase 04.1 real PostgreSQL PIM persistence', () => {
         specificationsStructured: true,
       },
     });
+    // This fixture intentionally omits optional/defaulted fields when calling
+    // the service directly. Assert their persisted values so service-boundary
+    // Zod normalization cannot regress behind route-level validation.
+    expect(persisted.isFeatured).toBe(false);
+    expect(persisted.isNew).toBe(false);
+    expect(persisted.isOnSale).toBe(false);
     expect(persisted.variants).toHaveLength(1);
+    expect(persisted.variants[0]?.isActive).toBe(true);
+    expect(persisted.variants[0]?.sortOrder).toBe(0);
     expect(persisted.variants[0]?.skuRecord?.code).toBe(`PIM-SKU-${codeSuffix}`);
+    expect(persisted.variants[0]?.skuRecord?.status).toBe('ACTIVE');
     expect(persisted.specificationsStructured).toHaveLength(1);
+    expect(persisted.specificationsStructured[0]?.scope).toBe('PRODUCT');
+    expect(persisted.specificationsStructured[0]?.sortOrder).toBe(0);
     expect(persisted.seo?.canonicalUrl).toBe(`https://example.test/products/${publishedSlug}`);
 
     const image = await database.prisma.mediaFile.create({
