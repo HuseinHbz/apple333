@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 .env.local
+.env.pim-test
 .env.production
 .env.staging
 *.pem
@@ -15,3 +16,4 @@ node_modules/
 playwright-report/
 test-results/
 .local-media/
+logs/

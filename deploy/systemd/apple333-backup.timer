@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Apple333 encrypted PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=apple333-backup.service
+
+[Install]
+WantedBy=timers.target

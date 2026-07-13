@@ -1,0 +1,61 @@
+# Optional public TLS-edge template. It is deliberately NOT installed by the
+# Apple333 scripts, because certificate ownership and a server's existing
+# virtual hosts must be reviewed by the infrastructure operator first.
+
+map $http_upgrade $apple333_connection_upgrade {
+  default upgrade;
+  '' close;
+}
+
+server {
+  listen 80;
+  server_name ${APPLE333_PUBLIC_SERVER_NAME};
+  location ^~ /.well-known/acme-challenge/ {
+    root ${APPLE333_ACME_WEBROOT};
+  }
+  location / {
+    return 308 https://$host$request_uri;
+  }
+}
+
+server {
+  listen 443 ssl http2;
+  server_name ${APPLE333_PUBLIC_SERVER_NAME};
+
+  ssl_certificate ${APPLE333_TLS_CERTIFICATE};
+  ssl_certificate_key ${APPLE333_TLS_CERTIFICATE_KEY};
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_session_timeout 1d;
+  ssl_session_cache shared:Apple333TLS:10m;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+  gzip on;
+  gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
+
+  location /_next/static/ {
+    proxy_pass http://127.0.0.1:${APPLE333_HTTP_PORT};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:${APPLE333_HTTP_PORT};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $apple333_connection_upgrade;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+  }
+}

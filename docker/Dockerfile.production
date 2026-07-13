@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1.7
+# Production image only. Local development continues to use pnpm directly.
+FROM node:20.18.3-alpine3.20 AS base
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+RUN corepack enable
+
+FROM base AS dependencies
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch --frozen-lockfile
+
+FROM base AS builder
+
+COPY --from=dependencies /pnpm/store /pnpm/store
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --offline --frozen-lockfile
+
+COPY prisma ./prisma
+RUN pnpm prisma:generate
+
+COPY . .
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT
+ARG NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_ENVIRONMENT=$NEXT_PUBLIC_SENTRY_ENVIRONMENT
+ENV NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=$NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE
+RUN pnpm build
+
+FROM base AS migrator
+
+# Migrations deliberately use a separate, short-lived image. The public app
+# image stays minimal and cannot accidentally run a Prisma CLI or contain the
+# reviewed migration SQL. This target is built from the same checked-out source
+# revision as the app image by the managed deployment scripts.
+ENV HOME=/tmp
+COPY --from=dependencies /pnpm/store /pnpm/store
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --offline --frozen-lockfile
+
+COPY prisma ./prisma
+RUN pnpm prisma:generate \
+  && apk add --no-cache dumb-init libc6-compat \
+  && addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 --ingroup nodejs nextjs
+
+USER nextjs
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["pnpm", "prisma", "migrate", "deploy"]
+
+FROM node:20.18.3-alpine3.20 AS runner
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+WORKDIR /app
+RUN apk add --no-cache dumb-init libc6-compat \
+  && addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 --ingroup nodejs nextjs
+
+# Next standalone contains only server-traced production dependencies. Prisma's
+# generated engine is copied explicitly because it is resolved dynamically.
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+
+USER nextjs
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/api/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "server.js"]

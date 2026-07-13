@@ -28,6 +28,8 @@ export interface AdminNavigationGroup {
   items: readonly AdminNavigationItem[];
 }
 
+const implementedRouteOverrides = new Set(['/admin/products']);
+
 export const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     id: 'overview',
@@ -64,6 +66,17 @@ export const adminNavigation: readonly AdminNavigationGroup[] = [
       { id: 'notifications', label: 'اعلان‌ها', href: '/admin/notifications', icon: 'notifications', permission: 'notifications.read', availability: 'available' },
       { id: 'audit-logs', label: 'رویدادهای ممیزی', href: '/admin/audit-logs', icon: 'audit', permission: 'audit.read', availability: 'available' }
     ]
+  },
+  {
+    id: 'product-platform',
+    label: 'Apple Product Platform',
+    items: [
+      { id: 'brands', label: 'Brands', href: '/admin/brands', icon: 'package', permission: 'brands.read', availability: 'available' },
+      { id: 'categories', label: 'Categories', href: '/admin/categories', icon: 'package', permission: 'categories.read', availability: 'available' },
+      { id: 'specifications', label: 'Specifications', href: '/admin/specifications', icon: 'package', permission: 'attributes.read', availability: 'available' },
+      { id: 'warranties', label: 'Warranties', href: '/admin/warranties', icon: 'package', permission: 'warranties.read', availability: 'available' },
+      { id: 'product-imports', label: 'Product imports', href: '/admin/product-imports', icon: 'package', permission: 'product-imports.read', availability: 'available' }
+    ]
   }
 ];
 
@@ -71,7 +84,9 @@ export function visibleAdminNavigation(permissions: ReadonlySet<string>): readon
   return adminNavigation
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.permission || permissions.has(item.permission))
+      items: group.items
+        .filter((item) => !item.permission || permissions.has(item.permission))
+        .map((item) => implementedRouteOverrides.has(item.href) ? { ...item, availability: 'available' as const } : item)
     }))
     .filter((group) => group.items.length > 0);
 }

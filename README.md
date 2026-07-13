@@ -34,6 +34,7 @@ pnpm lint
 pnpm test
 pnpm test:integration
 pnpm test:e2e
+pnpm test:deploy
 pnpm build
 ```
 
@@ -43,6 +44,8 @@ destructive database commands without an approved migration plan.
 
 ## Documentation
 
+- [Safe server deployment](deploy/README.md)
+- [Deployment maintenance rule](deploy/MAINTENANCE_RULE.md)
 - [Phase 03 implementation evidence](docs/phase-03/09-implementation-report.md)
 - [Phase 03 quality gates](docs/phase-03/08-testing-report.md)
 - [Database safety plan](docs/phase-03/database-plan.md)

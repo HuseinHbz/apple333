@@ -1,0 +1,20 @@
+[Unit]
+Description=Apple333 encrypted PostgreSQL backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=apple333-deploy
+Group=apple333-deploy
+WorkingDirectory=/opt/apple333
+Environment=APPLE333_ENV_FILE=/etc/apple333/production.env
+ExecStart=/usr/bin/bash /opt/apple333/scripts/backup-db.sh --apply --prune-retention
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/apple333 /mnt/apple333-backups
+
+# This unit is a template. Review paths, operator account, secret file
+# ownership, off-host mount, and failure alerting before enabling it.

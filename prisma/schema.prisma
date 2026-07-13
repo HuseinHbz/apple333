@@ -48,6 +48,86 @@ enum NotificationStatus {
   FAILED
 }
 
+enum CatalogProductStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum BrandStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProductSkuStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum ProductAttributeValueType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+  DIMENSION
+}
+
+enum ProductSpecificationScope {
+  PRODUCT
+  VARIANT
+}
+
+enum ProductImportFormat {
+  CSV
+  XLSX
+}
+
+enum ProductImportStatus {
+  UPLOADED
+  VALIDATING
+  READY
+  APPLYING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+enum ProductImportRowAction {
+  CREATE
+  UPDATE
+  SKIP
+}
+
+enum ProductImportRowStatus {
+  PENDING
+  VALID
+  VALIDATION_ERROR
+  APPLIED
+  FAILED
+  ROLLED_BACK
+}
+
+enum ProductMediaRole {
+  HERO
+  GALLERY
+  VIDEO
+}
+
+enum BranchKind {
+  STORE
+  CENTRAL_STOCK
+}
+
+enum StorefrontCartStatus {
+  ACTIVE
+  ABANDONED
+  CONVERTED
+}
+
 model User {
   id              String                 @id @default(cuid())
   name            String?
@@ -67,6 +147,10 @@ model User {
   notifications   Notification[]         @relation("NotificationRecipient")
   updatedSettings SystemSetting[]        @relation("SettingUpdatedBy")
   settingVersions SystemSettingVersion[] @relation("SettingVersionActor")
+  storefrontCarts StorefrontCart[]
+  approvedProducts CatalogProduct[]       @relation("ProductApprovedBy")
+  productWorkflowEvents ProductWorkflowEvent[] @relation("ProductWorkflowActor")
+  productImportBatches ProductImportBatch[] @relation("ProductImportRequestedBy")
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
@@ -248,12 +332,475 @@ model MediaFile {
   metadata     Json?
   uploadedById String
   uploadedBy   User      @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  productMedia ProductMedia[]
+  brandLogos   Brand[]   @relation("BrandLogoMedia")
+  categoryImages CatalogCategory[] @relation("CategoryImageMedia")
+  importSourceFiles ProductImportBatch[] @relation("ProductImportSourceFile")
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   @@index([uploadedById, createdAt])
   @@index([kind, deletedAt, createdAt])
+}
+
+model CatalogCategory {
+  id                  String                       @id @default(cuid())
+  parentId            String?
+  imageMediaId        String?
+  slug                String                       @unique
+  name                String
+  description         String?
+  imageUrl            String?
+  seoTitle            String?
+  seoDescription      String?
+  canonicalUrl        String?
+  schemaData          Json?
+  sortOrder           Int                          @default(0)
+  isActive            Boolean                      @default(true)
+  deletedAt           DateTime?
+  parent              CatalogCategory?             @relation("CatalogCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children            CatalogCategory[]            @relation("CatalogCategoryTree")
+  imageMedia          MediaFile?                   @relation("CategoryImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
+  products            CatalogProduct[]
+  attributeAssignments CategoryAttribute[]
+  specificationGroups CategorySpecificationGroup[]
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@index([parentId, sortOrder])
+  @@index([isActive, sortOrder])
+  @@index([deletedAt, isActive])
+}
+
+model CatalogProduct {
+  id                  String               @id @default(cuid())
+  categoryId          String?
+  brandId             String?
+  approvedById        String?
+  slug                String               @unique
+  name                String
+  brand               String               @default("Apple")
+  summary             String?
+  description         String?
+  status              CatalogProductStatus @default(DRAFT)
+  specifications      Json?
+  seoTitle            String?
+  seoDescription      String?
+  submittedForReviewAt DateTime?
+  approvedAt          DateTime?
+  publishedAt         DateTime?
+  deletedAt           DateTime?
+  version             Int                  @default(1)
+  searchText          String?
+  isFeatured          Boolean              @default(false)
+  featuredRank        Int?
+  isNew               Boolean              @default(false)
+  isOnSale            Boolean              @default(false)
+  category            CatalogCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brandRecord         Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  approvedBy          User?                 @relation("ProductApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  variants            CatalogVariant[]
+  media               ProductMedia[]
+  seo                 ProductSeo?
+  specificationsStructured ProductSpecification[]
+  workflowEvents      ProductWorkflowEvent[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([categoryId, status])
+  @@index([isFeatured, status])
+  @@index([brandId, status, publishedAt])
+  @@index([deletedAt, status, updatedAt])
+}
+
+model CatalogVariant {
+  id                  String               @id @default(cuid())
+  productId           String
+  warrantyId          String?
+  sku                 String               @unique
+  title               String?
+  color               String?
+  storage             String?
+  region              String?
+  modelNumber         String?
+  optionKey           String?
+  warranty            String?
+  attributes          Json?
+  priceRials          BigInt
+  compareAtPriceRials BigInt?
+  isActive            Boolean              @default(true)
+  deletedAt           DateTime?
+  version             Int                  @default(1)
+  sortOrder           Int                  @default(0)
+  product             CatalogProduct       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warrantyRecord      Warranty?            @relation(fields: [warrantyId], references: [id], onDelete: SetNull)
+  inventory           BranchInventory[]
+  cartItems           StorefrontCartItem[]
+  skuRecord           ProductSku?
+  specificationsStructured ProductSpecification[]
+  media               ProductMedia[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([productId, isActive, sortOrder])
+  @@index([isActive, priceRials])
+  @@index([warrantyId, isActive])
+  @@index([productId, optionKey])
+  @@index([deletedAt, isActive])
+}
+
+model ProductMedia {
+  productId String
+  mediaId   String
+  variantId String?
+  id        String           @default(cuid()) @unique
+  role      ProductMediaRole @default(GALLERY)
+  altText   String?
+  caption   String?
+  sortOrder Int              @default(0)
+  product   CatalogProduct   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   CatalogVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  media     MediaFile        @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@id([productId, mediaId])
+  @@index([mediaId])
+  @@index([productId, role, sortOrder])
+  @@index([variantId, sortOrder])
+}
+
+model Brand {
+  id             String      @id @default(cuid())
+  code           String      @unique
+  slug           String      @unique
+  name           String
+  logoMediaId    String?
+  description    String?
+  seoTitle       String?
+  seoDescription String?
+  canonicalUrl   String?
+  schemaData     Json?
+  status         BrandStatus @default(DRAFT)
+  deletedAt      DateTime?
+  logoMedia      MediaFile?  @relation("BrandLogoMedia", fields: [logoMediaId], references: [id], onDelete: SetNull)
+  products       CatalogProduct[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([status, name])
+  @@index([deletedAt, status])
+}
+
+model Warranty {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  provider        String
+  name           String
+  durationMonths Int
+  terms          String?  @db.Text
+  conditions     String?  @db.Text
+  isActive       Boolean  @default(true)
+  deletedAt      DateTime?
+  variants       CatalogVariant[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([provider, isActive])
+  @@index([deletedAt, isActive])
+}
+
+model ProductSku {
+  id                  String           @id @default(cuid())
+  variantId           String           @unique
+  code                String           @unique
+  barcode             String?          @unique
+  priceRials          BigInt
+  compareAtPriceRials BigInt?
+  costRials           BigInt?
+  status              ProductSkuStatus @default(ACTIVE)
+  version             Int              @default(1)
+  deletedAt           DateTime?
+  variant             CatalogVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([deletedAt, status])
+}
+
+model SpecificationGroup {
+  id          String             @id @default(cuid())
+  code        String             @unique
+  name        String
+  description String?
+  sortOrder   Int                @default(0)
+  isActive    Boolean            @default(true)
+  deletedAt   DateTime?
+  attributes  ProductAttribute[]
+  categories  CategorySpecificationGroup[]
+  categoryAttributes CategoryAttribute[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([deletedAt, isActive])
+}
+
+model ProductAttribute {
+  id          String                    @id @default(cuid())
+  groupId     String?
+  code        String                    @unique
+  name        String
+  valueType   ProductAttributeValueType
+  unitCode    String?
+  description String?
+  isFilterable Boolean                  @default(false)
+  isSearchable Boolean                  @default(true)
+  isRequiredDefault Boolean             @default(false)
+  sortOrder   Int                       @default(0)
+  isActive    Boolean                   @default(true)
+  deletedAt   DateTime?
+  group       SpecificationGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  values      AttributeValue[]
+  categoryAssignments CategoryAttribute[]
+  specifications ProductSpecification[]
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@index([groupId, isActive, sortOrder])
+  @@index([deletedAt, isActive])
+}
+
+model AttributeValue {
+  id          String           @id @default(cuid())
+  attributeId String
+  code        String
+  label       String
+  sortOrder   Int              @default(0)
+  isActive    Boolean          @default(true)
+  metadata    Json?
+  deletedAt   DateTime?
+  attribute   ProductAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  specifications ProductSpecification[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([attributeId, code])
+  @@index([attributeId, isActive, sortOrder])
+  @@index([deletedAt, isActive])
+}
+
+model CategorySpecificationGroup {
+  id         String             @id @default(cuid())
+  categoryId String
+  groupId    String
+  sortOrder  Int                @default(0)
+  category   CatalogCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  group      SpecificationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([categoryId, groupId])
+  @@index([groupId, sortOrder])
+}
+
+model CategoryAttribute {
+  id          String             @id @default(cuid())
+  categoryId  String
+  attributeId String
+  groupId     String?
+  isRequired  Boolean            @default(false)
+  isFilterable Boolean            @default(false)
+  sortOrder   Int                @default(0)
+  category    CatalogCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attribute   ProductAttribute   @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  group       SpecificationGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([categoryId, attributeId])
+  @@index([groupId, sortOrder])
+}
+
+model ProductSpecification {
+  id               String                    @id @default(cuid())
+  productId        String
+  variantId        String?
+  attributeId      String
+  attributeValueId String?
+  scope            ProductSpecificationScope
+  subjectKey       String
+  value            Json?
+  displayValue     String
+  unitCode         String?
+  sortOrder        Int                       @default(0)
+  product          CatalogProduct            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant          CatalogVariant?           @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attribute        ProductAttribute          @relation(fields: [attributeId], references: [id], onDelete: Restrict)
+  attributeValue   AttributeValue?           @relation(fields: [attributeValueId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@unique([productId, subjectKey, attributeId])
+  @@index([variantId, sortOrder])
+  @@index([attributeId, attributeValueId])
+}
+
+model ProductSeo {
+  id              String         @id @default(cuid())
+  productId       String         @unique
+  metaTitle       String?
+  metaDescription String?
+  canonicalUrl    String?
+  schemaData      Json?
+  noIndex         Boolean        @default(false)
+  product         CatalogProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model ProductWorkflowEvent {
+  id         String               @id @default(cuid())
+  productId  String
+  actorId    String?
+  fromStatus CatalogProductStatus
+  toStatus   CatalogProductStatus
+  note       String?
+  revision   Int
+  product    CatalogProduct       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  actor      User?                @relation("ProductWorkflowActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@index([productId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model ProductImportBatch {
+  id                String              @id @default(cuid())
+  sourceFileId      String?
+  requestedById     String?
+  format            ProductImportFormat
+  status            ProductImportStatus @default(UPLOADED)
+  originalFileName  String
+  sourceChecksum    String?
+  mappingVersion    String              @default("v1")
+  totalRows         Int                 @default(0)
+  validRows         Int                 @default(0)
+  failedRows        Int                 @default(0)
+  validationSummary Json?
+  errorReport       Json?
+  applyAttemptToken String?
+  applyStartedAt    DateTime?
+  appliedAt         DateTime?
+  rolledBackAt      DateTime?
+  sourceFile        MediaFile?          @relation("ProductImportSourceFile", fields: [sourceFileId], references: [id], onDelete: SetNull)
+  requestedBy       User?               @relation("ProductImportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  rows              ProductImportRow[]
+  changes           ProductImportChange[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@index([status, applyStartedAt])
+  @@index([requestedById, createdAt])
+  @@index([sourceChecksum])
+}
+
+model ProductImportRow {
+  id               String                 @id @default(cuid())
+  importBatchId    String
+  rowNumber        Int
+  status           ProductImportRowStatus @default(PENDING)
+  action           ProductImportRowAction @default(SKIP)
+  rawData          Json
+  normalizedData   Json?
+  validationErrors Json?
+  appliedAt        DateTime?
+  importBatch      ProductImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([importBatchId, rowNumber])
+  @@index([importBatchId, status, rowNumber])
+}
+
+model ProductImportChange {
+  id             String             @id @default(cuid())
+  importBatchId  String
+  entityType     String
+  entityId       String
+  action         ProductImportRowAction
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  importBatch    ProductImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([importBatchId, entityType])
+}
+
+model Branch {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  kind        BranchKind        @default(STORE)
+  city        String?
+  address     String?
+  phone       String?
+  isActive    Boolean           @default(true)
+  isPickupEnabled Boolean        @default(true)
+  inventory   BranchInventory[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([isActive, kind])
+}
+
+model BranchInventory {
+  branchId  String
+  variantId String
+  onHand    Int            @default(0)
+  reserved  Int            @default(0)
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  variant   CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  updatedAt DateTime       @updatedAt
+
+  @@id([branchId, variantId])
+  @@index([variantId])
+}
+
+model StorefrontCart {
+  id             String               @id @default(cuid())
+  userId         String?
+  guestTokenHash String?              @unique
+  status         StorefrontCartStatus @default(ACTIVE)
+  currency       String               @default("IRR")
+  version        Int                  @default(1)
+  expiresAt      DateTime?
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items          StorefrontCartItem[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([userId, status, updatedAt])
+  @@index([status, expiresAt])
+}
+
+model StorefrontCartItem {
+  cartId    String
+  variantId String
+  quantity  Int            @default(1)
+  cart      StorefrontCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant   CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@id([cartId, variantId])
+  @@index([variantId])
 }
 
 model Notification {

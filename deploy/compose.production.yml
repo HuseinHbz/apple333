@@ -1,0 +1,301 @@
+name: ${COMPOSE_PROJECT_NAME}
+
+x-apple333-labels: &apple333-labels
+  com.apple333.project: ${APPLE333_PROJECT_ID}
+  com.apple333.managed: "true"
+  com.apple333.environment: ${APPLE333_ENVIRONMENT}
+  com.apple333.install-id: ${APPLE333_INSTALL_ID}
+
+x-json-logging: &json-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-resource-defaults: &resource-defaults
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    <<: *resource-defaults
+    image: postgres:16.6-alpine3.20
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [private]
+    shm_size: 256mb
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 512
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: postgres
+
+  redis:
+    <<: *resource-defaults
+    image: redis:7.4.2-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    volumes:
+      - redis_data:/data
+    networks: [private]
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 256
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: redis
+
+  # The application intentionally continues to use UnconfiguredStorage in
+  # production until a reviewed S3 adapter is approved. This isolated MinIO
+  # service is infrastructure readiness only; it does not silently activate
+  # media storage or create buckets/users.
+  minio:
+    <<: *resource-defaults
+    image: ${APPLE333_MINIO_IMAGE:-minio/minio:RELEASE.2024-10-13T13-34-11Z}
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    expose: ["9000", "9001"]
+    networks: [private]
+    mem_limit: 768m
+    cpus: 0.75
+    pids_limit: 256
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: minio
+
+  # A short-lived, non-root Prisma CLI image. It is only started explicitly by
+  # the managed install/update scripts after they build this exact revision.
+  migrate:
+    <<: *resource-defaults
+    restart: "no"
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.production
+      target: migrator
+    image: ${APPLE333_MIGRATION_IMAGE:-apple333/migrate:local}
+    profiles: ["migration"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: ["ALL"]
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+    logging: *json-logging
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: migration
+
+  app:
+    <<: *resource-defaults
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.production
+      target: runner
+      args:
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+        NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+    image: ${APPLE333_APP_IMAGE:-apple333/app:local}
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      APP_NAME: ${APP_NAME}
+      APP_URL: ${APP_URL}
+      AUTH_URL: ${AUTH_URL}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}
+      METRICS_ENABLED: "true"
+      APPLE333_TRUST_PROXY_HEADERS: "true"
+      PORT: "3000"
+    expose: ["3000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [private, egress]
+    user: "1001:1001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: ["ALL"]
+    mem_limit: 1024m
+    cpus: 1.0
+    pids_limit: 256
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: app
+
+  nginx:
+    <<: *resource-defaults
+    image: nginx:1.27.4-alpine
+    ports:
+      - "${APPLE333_HTTP_BIND}:${APPLE333_HTTP_PORT}:80"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [private]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: nginx
+
+  prometheus:
+    <<: *resource-defaults
+    image: prom/prometheus:v2.54.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME}
+      - --web.enable-lifecycle=false
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [private]
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 256
+    logging: *json-logging
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: prometheus
+
+  grafana:
+    <<: *resource-defaults
+    image: grafana/grafana:11.2.0
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${GRAFANA_HTTP_PORT}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks: [private]
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 256
+    logging: *json-logging
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: grafana
+
+networks:
+  private:
+    name: ${COMPOSE_PROJECT_NAME}_private
+    internal: true
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: network
+  # App-only outbound network. The host firewall or an approved egress proxy
+  # must restrict destinations (for example Sentry) and this network has no
+  # published inbound ports.
+  egress:
+    name: ${COMPOSE_PROJECT_NAME}_egress
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: egress-network
+
+volumes:
+  postgres_data:
+    name: ${COMPOSE_PROJECT_NAME}_postgres_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: postgres-data
+  redis_data:
+    name: ${COMPOSE_PROJECT_NAME}_redis_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: redis-data
+  minio_data:
+    name: ${COMPOSE_PROJECT_NAME}_minio_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: minio-data
+  prometheus_data:
+    name: ${COMPOSE_PROJECT_NAME}_prometheus_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: prometheus-data
+  grafana_data:
+    name: ${COMPOSE_PROJECT_NAME}_grafana_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: grafana-data

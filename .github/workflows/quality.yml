@@ -1,37 +1,168 @@
-name: quality
-on: [pull_request, push]
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+# CI has no need to write repository state, publish packages, or access secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
+  pim-database:
+    name: Verify isolated PIM database activation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_pim_test
+          POSTGRES_USER: apple333_pim_test
+          POSTGRES_PASSWORD: ci-pim-test-only
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_pim_test -d apple333_pim_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      APPLE333_PIM_TEST_DB: "1"
+      PIM_TEST_DATABASE_URL: postgresql://apple333_pim_test:ci-pim-test-only@127.0.0.1:55432/apple333_pim_test?schema=public
+      DATABASE_URL: postgresql://apple333_pim_test:ci-pim-test-only@127.0.0.1:55432/apple333_pim_test?schema=public
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: |
+          pnpm prisma:validate
+          pnpm prisma:generate
+
+      - name: Verify isolated PIM target
+        run: pnpm pim:test:preflight
+
+      - name: Apply reviewed PIM baseline to isolated database
+        run: pnpm pim:test:migrate
+
+      - name: Run real PIM persistence and public API tests
+        run: pnpm test:pim-db
+
+  verify:
+    name: Verify application quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
-        env: { POSTGRES_DB: apple333_test, POSTGRES_USER: apple333, POSTGRES_PASSWORD: test-only }
-        ports: ['5432:5432']
-        options: >- 
-          --health-cmd "pg_isready -U apple333 -d apple333_test" --health-interval 10s --health-timeout 5s --health-retries 5
+        env:
+          POSTGRES_DB: apple333_test
+          POSTGRES_USER: apple333
+          POSTGRES_PASSWORD: test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333 -d apple333_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       redis:
         image: redis:7-alpine
-        ports: ['6379:6379']
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
-      NODE_ENV: test
       APP_NAME: Apple333
       APP_URL: http://localhost:3000
       AUTH_URL: http://localhost:3000
-      AUTH_SECRET: test-only-not-a-production-secret-123456
+      AUTH_SECRET: ci-test-only-secret-not-valid-outside-ci-123456
       DATABASE_URL: postgresql://apple333:test-only@localhost:5432/apple333_test?schema=public
+      REDIS_URL: redis://localhost:6379
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 10.10.0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm prisma:validate
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm test:integration
-      - run: pnpm build
-      - run: pnpm exec playwright install chromium
-      - run: pnpm test:e2e
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and generate Prisma client
+        run: |
+          pnpm prisma:validate
+          pnpm prisma:generate
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Run unit tests
+        run: NODE_ENV=test pnpm test
+
+      - name: Run integration tests
+        run: NODE_ENV=test pnpm test:integration
+
+      - name: Validate deployment assets
+        run: pnpm test:deploy
+
+      - name: Build application
+        run: NODE_ENV=production pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run end-to-end smoke tests
+        run: pnpm test:e2e
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-failure-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

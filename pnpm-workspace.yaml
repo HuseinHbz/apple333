@@ -1,0 +1,10 @@
+# Build-script allowlist for reproducible, reviewed installs. Values are explicit
+# because pnpm 10+ otherwise refuses lifecycle scripts by default.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@sentry/cli': false
+  esbuild: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

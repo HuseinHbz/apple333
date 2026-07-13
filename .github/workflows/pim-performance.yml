@@ -1,0 +1,130 @@
+name: Phase 04.1 PIM performance verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/phase-04.1-pim-database-activation
+    paths:
+      - .github/workflows/pim-performance.yml
+      - package.json
+      - pnpm-lock.yaml
+      - prisma/**
+      - scripts/benchmark-pim-catalog.mjs
+      - scripts/verify-pim-test-environment.mjs
+      - src/app/api/**
+      - src/modules/catalog/**
+      - src/server/**
+      - tests/database/**
+      - tests/unit/pim-performance-benchmark.test.ts
+
+# The benchmark runs only against the disposable service below and never needs
+# repository write access or deployment credentials.
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-04-1-pim-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: Benchmark 10k and 100k isolated PIM catalog records
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_pim_test
+          POSTGRES_USER: apple333_pim_test
+          POSTGRES_PASSWORD: ci-pim-test-only
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_pim_test -d apple333_pim_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      APPLE333_PIM_TEST_DB: "1"
+      PIM_TEST_DATABASE_URL: postgresql://apple333_pim_test:ci-pim-test-only@127.0.0.1:55432/apple333_pim_test?schema=public
+      DATABASE_URL: postgresql://apple333_pim_test:ci-pim-test-only@127.0.0.1:55432/apple333_pim_test?schema=public
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and generate Prisma client
+        run: |
+          pnpm prisma:validate
+          pnpm prisma:generate
+
+      - name: Verify and migrate the disposable PIM target
+        run: |
+          pnpm pim:test:preflight
+          pnpm pim:test:migrate
+
+      - name: Build the local application for HTTP timing
+        env:
+          NODE_ENV: production
+        run: pnpm build
+
+      - name: Start the local application
+        env:
+          NODE_ENV: production
+        run: |
+          pnpm start > next-server.log 2>&1 &
+          echo $! > next-server.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3000/api/categories > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat next-server.log
+          exit 1
+
+      - name: Run guarded 10k and 100k benchmark
+        env:
+          PIM_BENCHMARK_ALLOW_SEED: "1"
+          PIM_BENCHMARK_RUN_ID: ci-${{ github.run_id }}
+          PIM_BENCHMARK_API_BASE_URL: http://127.0.0.1:3000
+        run: |
+          set -o pipefail
+          pnpm pim:benchmark --execute 2>&1 | tee pim-performance.log
+
+      - name: Stop the local application
+        if: always()
+        run: |
+          if [ -f next-server.pid ]; then
+            kill "$(cat next-server.pid)" || true
+          fi
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-04-1-pim-performance-${{ github.run_id }}
+          path: |
+            pim-performance.log
+            next-server.log
+          if-no-files-found: warn
+          retention-days: 30

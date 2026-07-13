@@ -1,0 +1,7 @@
+# Compatibility entry point for operators who expect the conventional Compose
+# filename. The single canonical definition remains deploy/compose.production.yml
+# so deployment scripts and manual use cannot drift apart. Docker Compose v2.20+
+# is required for the include directive.
+include:
+  - path: ./deploy/compose.production.yml
+    env_file: ./deploy/.env.production
