@@ -16,6 +16,9 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
     "test:deploy": "vitest run tests/unit/deploy-assets.test.ts",
+    "pim:test:preflight": "node scripts/verify-pim-test-environment.mjs",
+    "pim:test:migrate": "node scripts/run-pim-test-migrations.mjs",
+    "test:pim-db": "node scripts/run-pim-database-tests.mjs",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate"
   },

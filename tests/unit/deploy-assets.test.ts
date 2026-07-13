@@ -63,10 +63,15 @@ describe('deployment safety assets', () => {
 
   it('uses the reviewed migration image and trusted client addressing', () => {
     const library = readDeploy('bin/lib.sh');
+    const install = readDeploy('bin/install.sh');
+    const update = readDeploy('bin/update.sh');
     const nginx = readDeploy('nginx.production.conf');
 
     expect(library).toContain('build_release_images');
     expect(library).toContain('run_prisma');
+    expect(library).toContain('require_phase_04_1_pim_baseline_approval');
+    expect(install).toContain('require_phase_04_1_pim_baseline_approval');
+    expect(update).toContain('require_phase_04_1_pim_baseline_approval');
     expect(nginx).toContain('real_ip_header X-Forwarded-For');
     expect(nginx).toContain('limit_req_zone $binary_realip_remote_addr');
     expect(nginx).toContain('proxy_set_header X-Forwarded-For $realip_remote_addr');

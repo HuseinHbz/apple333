@@ -1,0 +1,49 @@
+name: apple333-pim-test
+
+# Development/test-only PostgreSQL. Start it explicitly with:
+# docker compose --env-file .env.pim-test -f docker-compose.pim-test.yml up -d
+#
+# This file deliberately uses a separate project, volume, database, role, network,
+# and loopback-only port. It is never included by production Compose files.
+services:
+  postgres:
+    image: postgres:16.6-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${PIM_TEST_POSTGRES_DB:?PIM_TEST_POSTGRES_DB is required}
+      POSTGRES_USER: ${PIM_TEST_POSTGRES_USER:?PIM_TEST_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${PIM_TEST_POSTGRES_PASSWORD:?PIM_TEST_POSTGRES_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: --auth=scram-sha-256
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PIM_TEST_POSTGRES_BIND:?PIM_TEST_POSTGRES_BIND is required}:${PIM_TEST_POSTGRES_PORT:?PIM_TEST_POSTGRES_PORT is required}:5432"
+    volumes:
+      - apple333_pim_test_postgres_data:/var/lib/postgresql/data
+    networks:
+      - pim_test
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: pim-test
+      com.apple333.purpose: isolated-pim-database
+
+networks:
+  pim_test:
+    internal: true
+    name: apple333_pim_test_network
+
+volumes:
+  apple333_pim_test_postgres_data:
+    name: apple333_pim_test_postgres_data
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: pim-test
+      com.apple333.purpose: isolated-pim-database

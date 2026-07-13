@@ -50,6 +50,12 @@ const product = {
   specifications: [],
   media: [],
   variants: [],
+  seo: {
+    metaTitle: 'Buy iPhone 16 Pro',
+    metaDescription: 'Apple iPhone 16 Pro.',
+    canonicalUrl: 'https://apple333.example/products/iphone-16-pro',
+    noIndex: false,
+  },
 } satisfies PublicProductDto;
 
 const emptyCart = {
@@ -98,6 +104,17 @@ describe('storefront public API routes', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.getPublicProduct).toHaveBeenCalledWith('iphone-16-pro');
+  });
+
+  it('preserves safe SEO fields returned by the public product service', async () => {
+    const response = await productGet(request('/api/store/products/iphone-16-pro'), {
+      params: Promise.resolve({ slug: 'iphone-16-pro' }),
+    });
+    const body = await response.json() as { success: boolean; data: PublicProductDto };
+
+    expect(response.status).toBe(200);
+    expect(body.data.seo).toEqual(product.seo);
+    expect(body.data.seo).not.toHaveProperty('schemaData');
   });
 
   it('bounds product comparisons through the query validator', async () => {

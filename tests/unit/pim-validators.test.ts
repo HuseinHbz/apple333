@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createProductInput,
+  PIM_IMPORT_MAX_CELL_CHARS,
+  PIM_IMPORT_MAX_ROW_FIELDS,
   productImportPreviewInput,
   productListQuery,
   productSpecificationInput,
@@ -123,5 +125,64 @@ describe('PIM validators', () => {
       ...preview,
       rows: [],
     })).toThrow();
+  });
+
+  it('fails closed on oversized or structured import row data while preserving normal CSV JSON values', () => {
+    const preview = productImportPreviewInput.parse({
+      format: 'CSV',
+      originalFileName: 'products.csv',
+      rows: [{
+        rowNumber: 1,
+        data: {
+          name: 'iPhone 16 Pro',
+          sku: 'IPHONE-16-PRO-128',
+          priceRials: '1000',
+          importedAt: 1_725_000_000,
+          sourceVerified: true,
+          optionalValue: null,
+        },
+      }],
+    });
+
+    expect(preview.rows[0]?.data).toMatchObject({
+      name: 'iPhone 16 Pro',
+      importedAt: 1_725_000_000,
+      sourceVerified: true,
+      optionalValue: null,
+    });
+    expect(() => productImportPreviewInput.parse({
+      ...preview,
+      rows: [{ rowNumber: 1, data: { name: 'x'.repeat(PIM_IMPORT_MAX_CELL_CHARS + 1) } }],
+    })).toThrow();
+    expect(() => productImportPreviewInput.parse({
+      ...preview,
+      rows: [{ rowNumber: 1, data: Object.fromEntries(Array.from({ length: PIM_IMPORT_MAX_ROW_FIELDS + 1 }, (_, index) => [`field_${index}`, 'value'])) }],
+    })).toThrow();
+    expect(() => productImportPreviewInput.parse({
+      ...preview,
+      rows: [{ rowNumber: 1, data: { nested: { unexpected: true } } }],
+    })).toThrow();
+  });
+
+  it('revalidates JSON-safe staged product data with bigint price coercion', () => {
+    const staged = {
+      categoryId: CATEGORY_ID,
+      slug: 'staged-iphone-16-pro',
+      name: 'Staged iPhone 16 Pro',
+      variants: [{
+        skuCode: 'STAGED-IP16P-128',
+        warrantyId: 'cm1a2b3c4d5e6f7g8h9i0j1k3',
+        priceRials: '1000000000',
+        compareAtPriceRials: '1100000000',
+      }],
+      specifications: [],
+    };
+
+    const parsed = createProductInput.safeParse(staged);
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.variants[0]?.priceRials).toBe(1_000_000_000n);
+    }
   });
 });

@@ -50,6 +50,7 @@ acquire_deploy_lock
 
 if [[ "$migration_decision" == "apply" ]]; then
   require_migration_bundle
+  require_phase_04_1_pim_baseline_approval
 fi
 
 log "Ensuring verified infrastructure is running before release checks."

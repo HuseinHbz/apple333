@@ -37,11 +37,19 @@ export type PublicProductVariantDto = Readonly<{
   branches: readonly Readonly<{ id: string; name: string; city: string | null; available: number }>[];
 }>;
 
+export type PublicProductSeoDto = Readonly<{
+  metaTitle: string | null;
+  metaDescription: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+}>;
+
 export type PublicProductDto = PublicProductCardDto & Readonly<{
   description: string | null;
   specifications: readonly Readonly<{ key: string; value: string }>[];
   media: readonly Readonly<{ id: string; role: 'HERO' | 'GALLERY' | 'VIDEO'; altText: string | null; url: string }>[];
   variants: readonly PublicProductVariantDto[];
+  seo: PublicProductSeoDto;
 }>;
 
 export type StorefrontCartItemDto = Readonly<{

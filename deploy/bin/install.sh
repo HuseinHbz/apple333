@@ -36,6 +36,7 @@ load_environment
 require_docker_runtime
 "$SCRIPT_DIR/preflight.sh" --assert-installable
 require_migration_bundle
+require_phase_04_1_pim_baseline_approval
 acquire_deploy_lock
 ensure_install_id
 

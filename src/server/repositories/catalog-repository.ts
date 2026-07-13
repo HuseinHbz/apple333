@@ -8,6 +8,12 @@ const publicMediaSelect = {
   role: true,
   altText: true,
   sortOrder: true,
+  variant: {
+    select: {
+      isActive: true,
+      deletedAt: true,
+    },
+  },
   media: {
     select: {
       id: true,
@@ -42,9 +48,46 @@ const publicVariantSelect = {
   priceRials: true,
   compareAtPriceRials: true,
   isActive: true,
+  deletedAt: true,
   sortOrder: true,
+  skuRecord: {
+    select: {
+      status: true,
+      deletedAt: true,
+    },
+  },
   inventory: { select: publicInventorySelect },
 } satisfies Prisma.CatalogVariantSelect;
+
+const publicVariantWhere = {
+  isActive: true,
+  deletedAt: null,
+  skuRecord: {
+    is: {
+      status: 'ACTIVE',
+      deletedAt: null,
+    },
+  },
+} satisfies Prisma.CatalogVariantWhereInput;
+
+const publicMediaWhere = {
+  media: { is: { deletedAt: null } },
+  OR: [
+    { variantId: null },
+    { variant: { is: publicVariantWhere } },
+  ],
+} satisfies Prisma.ProductMediaWhereInput;
+
+const publicProductVisibilityWhere = {
+  status: 'PUBLISHED',
+  deletedAt: null,
+  category: { is: { isActive: true, deletedAt: null } },
+} satisfies Prisma.CatalogProductWhereInput;
+
+const publicProductWithSellableVariantWhere = {
+  ...publicProductVisibilityWhere,
+  variants: { some: publicVariantWhere },
+} satisfies Prisma.CatalogProductWhereInput;
 
 export const publicProductSelect = {
   id: true,
@@ -54,15 +97,25 @@ export const publicProductSelect = {
   summary: true,
   description: true,
   specifications: true,
+  seoTitle: true,
+  seoDescription: true,
   isFeatured: true,
   isNew: true,
   isOnSale: true,
   publishedAt: true,
   category: {
-    select: { id: true, slug: true, name: true, description: true, imageUrl: true, isActive: true },
+    select: { id: true, slug: true, name: true, description: true, imageUrl: true, isActive: true, deletedAt: true },
   },
-  media: { orderBy: { sortOrder: 'asc' }, select: publicMediaSelect },
-  variants: { orderBy: { sortOrder: 'asc' }, select: publicVariantSelect },
+  seo: {
+    select: {
+      metaTitle: true,
+      metaDescription: true,
+      canonicalUrl: true,
+      noIndex: true,
+    },
+  },
+  media: { where: publicMediaWhere, orderBy: { sortOrder: 'asc' }, select: publicMediaSelect },
+  variants: { where: publicVariantWhere, orderBy: { sortOrder: 'asc' }, select: publicVariantSelect },
 } satisfies Prisma.CatalogProductSelect;
 
 export type PublicProductRecord = Prisma.CatalogProductGetPayload<{
@@ -81,7 +134,7 @@ function productOrder(sort: CatalogPageQuery['sort']): Prisma.CatalogProductOrde
 
 function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput {
   const variantCriteria: Prisma.CatalogVariantWhereInput = {
-    isActive: true,
+    ...publicVariantWhere,
     ...(query.color === undefined ? {} : { color: { equals: query.color, mode: 'insensitive' } }),
     ...(query.storage === undefined ? {} : { storage: { equals: query.storage, mode: 'insensitive' } }),
     ...((query.minPriceRials === undefined && query.maxPriceRials === undefined)
@@ -100,7 +153,7 @@ function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput 
   };
 
   return {
-    status: 'PUBLISHED',
+    ...publicProductVisibilityWhere,
     ...(query.collection === undefined
       ? {}
       : query.collection === 'featured'
@@ -108,7 +161,7 @@ function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput 
         : query.collection === 'new'
           ? { isNew: true }
           : { isOnSale: true }),
-    ...(query.category === undefined ? {} : { category: { is: { slug: query.category, isActive: true } } }),
+    ...(query.category === undefined ? {} : { category: { is: { slug: query.category, isActive: true, deletedAt: null } } }),
     ...(query.query === undefined ? {} : {
       OR: [
         { name: { contains: query.query, mode: 'insensitive' } },
@@ -124,7 +177,7 @@ function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput 
 export const catalogRepository = {
   listCategories() {
     return prisma.catalogCategory.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: { id: true, slug: true, name: true, description: true, imageUrl: true },
     });
@@ -147,14 +200,14 @@ export const catalogRepository = {
 
   findPublicBySlug(slug: string): Promise<PublicProductRecord | null> {
     return prisma.catalogProduct.findFirst({
-      where: { slug, status: 'PUBLISHED' },
+      where: { slug, ...publicProductWithSellableVariantWhere },
       select: publicProductSelect,
     });
   },
 
   findPublicBySlugs(slugs: readonly string[]): Promise<PublicProductRecord[]> {
     return prisma.catalogProduct.findMany({
-      where: { slug: { in: [...slugs] }, status: 'PUBLISHED' },
+      where: { slug: { in: [...slugs] }, ...publicProductWithSellableVariantWhere },
       select: publicProductSelect,
     });
   },
@@ -164,8 +217,8 @@ export const catalogRepository = {
       where: {
         productId,
         mediaId,
-        product: { is: { status: 'PUBLISHED' } },
-        media: { is: { deletedAt: null } },
+        product: { is: publicProductWithSellableVariantWhere },
+        ...publicMediaWhere,
       },
       select: {
         media: { select: { storageKey: true, contentType: true, originalName: true } },

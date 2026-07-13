@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Prisma } from '@prisma/client';
 
 import type {
@@ -38,7 +40,7 @@ import type {
   UpdateSpecificationGroupInput,
   UpdateWarrantyInput,
 } from '@/modules/pim/validators';
-import { createProductInput } from '@/modules/pim/validators';
+import { createProductInput, PIM_IMPORT_MAX_ROWS } from '@/modules/pim/validators';
 import { auditInput, requireAuditContext } from '@/server/admin/audit';
 import type { AdminAuditContext, Page } from '@/server/admin/types';
 import { toPage } from '@/server/admin/pagination';
@@ -300,6 +302,43 @@ function toProductDetailDto(record: AdminProductDetailRecord): AdminProductDetai
 
 function assertVersion(expected: number, actual: number): void {
   if (expected !== actual) throw new ConflictError();
+}
+
+/**
+ * A read-then-update version check is vulnerable to a concurrent writer. This
+ * conditional mutation is the authoritative optimistic-lock transition and
+ * also holds the product row lock for the rest of the transaction.
+ */
+async function claimProductVersion(
+  productId: string,
+  client: Transaction,
+  expectedVersion?: number,
+): Promise<void> {
+  const result = await client.catalogProduct.updateMany({
+    where: {
+      id: productId,
+      deletedAt: null,
+      ...(expectedVersion === undefined ? {} : { version: expectedVersion }),
+    },
+    data: { version: { increment: 1 } },
+  });
+  if (result.count !== 1) {
+    if (expectedVersion === undefined) throw new NotFoundError();
+    throw new ConflictError();
+  }
+}
+
+async function claimVariantVersion(
+  productId: string,
+  variantId: string,
+  expectedVersion: number,
+  client: Transaction,
+): Promise<void> {
+  const result = await client.catalogVariant.updateMany({
+    where: { id: variantId, productId, deletedAt: null, version: expectedVersion },
+    data: { version: { increment: 1 } },
+  });
+  if (result.count !== 1) throw new ConflictError();
 }
 
 async function assertActiveCategory(categoryId: string | null | undefined, client: Transaction): Promise<void> {
@@ -1109,8 +1148,8 @@ export async function updateAdminProduct(productId: string, input: UpdateProduct
             skuCodes: product.variants.flatMap((variant) => [variant.sku, ...(variant.skuRecord ? [variant.skuRecord.code] : [])]),
           }),
         }),
-        version: { increment: 1 },
     };
+    await claimProductVersion(productId, transaction, input.version);
     await transaction.catalogProduct.update({ where: { id: productId }, data: productData });
     await auditLogRepository.create(auditInput(audit, {
       action: 'pim.product.updated', entityType: 'CatalogProduct', entityId: productId, metadata: { previousVersion: product.version },
@@ -1190,6 +1229,7 @@ export async function updateAdminProductVariant(productId: string, variantId: st
       select: { id: true },
     });
     if (optionDuplicate) throw new ConflictError();
+    await claimVariantVersion(productId, variantId, input.version, transaction);
     await transaction.catalogVariant.update({
       where: { id: variantId },
       data: {
@@ -1206,11 +1246,10 @@ export async function updateAdminProductVariant(productId: string, variantId: st
         ...(input.compareAtPriceRials === undefined ? {} : { compareAtPriceRials: input.compareAtPriceRials }),
         ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
         ...(input.sortOrder === undefined ? {} : { sortOrder: input.sortOrder }),
-        version: { increment: 1 },
       },
     });
-    await transaction.productSku.update({
-      where: { variantId },
+    const skuUpdate = await transaction.productSku.updateMany({
+      where: { variantId, version: variant.skuRecord.version, deletedAt: null },
       data: {
         ...(input.skuCode === undefined ? {} : { code: input.skuCode }),
         ...(input.barcode === undefined ? {} : { barcode: input.barcode }),
@@ -1221,7 +1260,8 @@ export async function updateAdminProductVariant(productId: string, variantId: st
         version: { increment: 1 },
       },
     });
-    await transaction.catalogProduct.update({ where: { id: productId }, data: { version: { increment: 1 } } });
+    if (skuUpdate.count !== 1) throw new ConflictError();
+    await claimProductVersion(productId, transaction);
     await auditLogRepository.create(auditInput(audit, {
       action: 'pim.product-variant.updated', entityType: 'CatalogVariant', entityId: variantId, metadata: { productId, previousVersion: variant.version },
     }), transaction);
@@ -1290,6 +1330,9 @@ export async function addAdminProductMedia(productId: string, input: ProductMedi
   await prisma.$transaction(async (transaction) => {
     const product = await transaction.catalogProduct.findFirst({ where: { id: productId, deletedAt: null }, select: { id: true } });
     if (!product) throw new NotFoundError();
+    // This product-level mutation serializes all HERO changes: PostgreSQL holds
+    // the row lock until the gallery demotion and HERO upsert commit together.
+    await claimProductVersion(productId, transaction);
     const expectedKind = input.role === 'VIDEO' ? 'VIDEO' : 'IMAGE';
     await assertMediaKind(input.mediaId, expectedKind, transaction);
     if (input.variantId) {
@@ -1318,7 +1361,6 @@ export async function addAdminProductMedia(productId: string, input: ProductMedi
         sortOrder: input.sortOrder,
       },
     });
-    await transaction.catalogProduct.update({ where: { id: productId }, data: { version: { increment: 1 } } });
     await auditLogRepository.create(auditInput(audit, {
       action: 'pim.product-media.upserted', entityType: 'CatalogProduct', entityId: productId, metadata: { mediaId: input.mediaId, role: input.role },
     }), transaction);
@@ -1365,10 +1407,10 @@ async function transitionProduct(productId: string, target: WorkflowTarget, inpu
     const now = new Date();
     const update = {
       status: target,
-      version: { increment: 1 },
       ...(target === 'REVIEW' ? { submittedForReviewAt: now } : {}),
       ...(target === 'PUBLISHED' ? { approvedAt: now, approvedById: audit.actorId, publishedAt: now } : {}),
     } satisfies Prisma.CatalogProductUpdateInput;
+    await claimProductVersion(productId, transaction, input.version);
     await transaction.catalogProduct.update({ where: { id: productId }, data: update });
     await transaction.productWorkflowEvent.create({
       data: { productId, actorId: audit.actorId, fromStatus: product.status, toStatus: target, ...(input.note === undefined ? {} : { note: input.note }), revision: product.version + 1 },
@@ -1398,18 +1440,14 @@ export async function deleteAdminProduct(productId: string, input: ProductWorkfl
     const product = await pimRepository.findProductWorkflowState(productId, transaction);
     if (!product || product.deletedAt) throw new NotFoundError();
     assertVersion(input.version, product.version);
-    await transaction.catalogProduct.update({ where: { id: productId }, data: { status: 'ARCHIVED', deletedAt: new Date(), version: { increment: 1 } } });
+    await claimProductVersion(productId, transaction, input.version);
+    await transaction.catalogProduct.update({ where: { id: productId }, data: { status: 'ARCHIVED', deletedAt: new Date() } });
     await transaction.productWorkflowEvent.create({ data: { productId, actorId: audit.actorId, fromStatus: product.status, toStatus: 'ARCHIVED', ...(input.note === undefined ? {} : { note: input.note }), revision: product.version + 1 } });
     await auditLogRepository.create(auditInput(audit, {
       action: 'pim.product.soft-deleted', entityType: 'CatalogProduct', entityId: productId, metadata: { fromStatus: product.status, revision: product.version + 1 },
     }), transaction);
   });
 }
-
-type NormalizedImportRow = Readonly<{
-  input: CreateProductInput;
-  action: 'CREATE' | 'UPDATE';
-}>;
 
 function importString(data: Record<string, unknown>, key: string): string | undefined {
   const value = data[key];
@@ -1463,6 +1501,79 @@ function importErrors(result: ReturnType<typeof parseImportProduct>): readonly s
   return result.success ? [] : result.error.issues.map((issue) => issue.message);
 }
 
+function duplicateImportValues(values: readonly string[]): ReadonlySet<string> {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return new Set([...counts].flatMap(([value, count]) => count > 1 ? [value] : []));
+}
+
+function addImportSkuOwner(
+  owners: Map<string, Set<string>>,
+  skuCode: string | null | undefined,
+  productSlug: string,
+): void {
+  if (!skuCode) return;
+  const skuOwners = owners.get(skuCode) ?? new Set<string>();
+  skuOwners.add(productSlug);
+  owners.set(skuCode, skuOwners);
+}
+
+function validateImportReferences(input: Readonly<{
+  product: CreateProductInput;
+  existingProducts: ReadonlyMap<string, Readonly<{ deletedAt: Date | null; status: string }>>;
+  existingSkuOwners: ReadonlyMap<string, ReadonlySet<string>>;
+  duplicateSlugs: ReadonlySet<string>;
+  duplicateSkuCodes: ReadonlySet<string>;
+  activeCategoryIds: ReadonlySet<string>;
+  activeBrandIds: ReadonlySet<string>;
+  activeWarrantyIds: ReadonlySet<string>;
+}>): readonly string[] {
+  const messages: string[] = [];
+  const existingProduct = input.existingProducts.get(input.product.slug);
+
+  if (input.duplicateSlugs.has(input.product.slug)) messages.push('Duplicate slug within this import.');
+
+  if (!input.product.categoryId) {
+    messages.push('A category is required for every imported product.');
+  } else if (!input.activeCategoryIds.has(input.product.categoryId)) {
+    messages.push('Category is inactive or unavailable.');
+  }
+  if (!input.product.brandId) {
+    messages.push('A brand is required for every imported product.');
+  } else if (!input.activeBrandIds.has(input.product.brandId)) {
+    messages.push('Brand is inactive or unavailable.');
+  }
+  if (existingProduct && (existingProduct.deletedAt || existingProduct.status === 'ARCHIVED')) {
+    messages.push('The imported slug belongs to an archived product.');
+  }
+  if (existingProduct && !existingProduct.deletedAt && existingProduct.status !== 'ARCHIVED') {
+    // Phase 04.1 only applies complete product creates. Treating an existing
+    // product as an update would silently ignore variant, SKU, price, and
+    // relationship changes until a full reviewed upsert contract exists.
+    messages.push('Update imports are not supported; use a new product slug.');
+  }
+
+  for (const variant of input.product.variants) {
+    if (input.duplicateSkuCodes.has(variant.skuCode)) messages.push('Duplicate SKU within this import.');
+    if (!variant.warrantyId) {
+      messages.push('A warranty is required for every imported SKU.');
+    } else if (!input.activeWarrantyIds.has(variant.warrantyId)) {
+      messages.push('Warranty is inactive or unavailable.');
+    }
+
+    const ownerSlugs = input.existingSkuOwners.get(variant.skuCode);
+    if (existingProduct) {
+      if (!ownerSlugs?.has(input.product.slug)) {
+        messages.push('The SKU does not belong to the existing product.');
+      }
+    } else if (ownerSlugs && ownerSlugs.size > 0) {
+      messages.push('The SKU is already assigned to another product.');
+    }
+  }
+
+  return [...new Set(messages)];
+}
+
 export async function previewAdminProductImport(input: ProductImportPreviewInput, context: AdminAuditContext): Promise<ProductImportPreviewDto> {
   const audit = requireAuditContext(context);
   const batch = await prisma.$transaction(async (transaction) => {
@@ -1470,26 +1581,78 @@ export async function previewAdminProductImport(input: ProductImportPreviewInput
       const source = await pimRepository.findMediaForAssociation(input.sourceFileId, transaction);
       if (!source || source.kind !== 'DOCUMENT') throw new ValidationError({ sourceFileId: 'Import source file is unavailable.' });
     }
-    const candidateSlugs = input.rows.flatMap((row) => {
-      const parsed = parseImportProduct(row.data);
-      return parsed.success ? [parsed.data.slug] : [];
-    });
-    const existingSlugs = new Set((await transaction.catalogProduct.findMany({ where: { slug: { in: candidateSlugs } }, select: { slug: true } })).map((product) => product.slug));
-    const rows = input.rows.map((row) => {
-      const parsed = parseImportProduct(row.data);
-      if (!parsed.success) {
+    const parsedRows = input.rows.map((row) => ({ row, parsed: parseImportProduct(row.data) }));
+    const normalizedProducts = parsedRows.flatMap(({ parsed }) => parsed.success ? [parsed.data] : []);
+    const candidateSlugs = [...new Set(normalizedProducts.map((product) => product.slug))];
+    const candidateSkuCodes = [...new Set(normalizedProducts.flatMap((product) => product.variants.map((variant) => variant.skuCode)))];
+    const categoryIds = [...new Set(normalizedProducts.flatMap((product) => product.categoryId ? [product.categoryId] : []))];
+    const brandIds = [...new Set(normalizedProducts.flatMap((product) => product.brandId ? [product.brandId] : []))];
+    const warrantyIds = [...new Set(normalizedProducts.flatMap((product) => product.variants.flatMap((variant) => variant.warrantyId ? [variant.warrantyId] : [])))];
+    const [existingProducts, existingVariants, activeCategories, activeBrands, activeWarranties] = await Promise.all([
+      transaction.catalogProduct.findMany({
+        where: { slug: { in: candidateSlugs } },
+        select: { slug: true, deletedAt: true, status: true },
+      }),
+      transaction.catalogVariant.findMany({
+        where: {
+          OR: [
+            { sku: { in: candidateSkuCodes } },
+            { skuRecord: { is: { code: { in: candidateSkuCodes } } } },
+          ],
+        },
+        select: { sku: true, skuRecord: { select: { code: true } }, product: { select: { slug: true } } },
+      }),
+      transaction.catalogCategory.findMany({
+        where: { id: { in: categoryIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      }),
+      transaction.brand.findMany({
+        where: { id: { in: brandIds }, status: 'ACTIVE', deletedAt: null },
+        select: { id: true },
+      }),
+      transaction.warranty.findMany({
+        where: { id: { in: warrantyIds }, isActive: true, deletedAt: null },
+        select: { id: true },
+      }),
+    ]);
+    const existingProductsBySlug = new Map(existingProducts.map((product) => [product.slug, product]));
+    const existingSkuOwners = new Map<string, Set<string>>();
+    for (const variant of existingVariants) {
+      addImportSkuOwner(existingSkuOwners, variant.sku, variant.product.slug);
+      addImportSkuOwner(existingSkuOwners, variant.skuRecord?.code, variant.product.slug);
+    }
+    const duplicateSlugs = duplicateImportValues(normalizedProducts.map((product) => product.slug));
+    const duplicateSkuCodes = duplicateImportValues(normalizedProducts.flatMap((product) => product.variants.map((variant) => variant.skuCode)));
+    const activeCategoryIds = new Set(activeCategories.map((category) => category.id));
+    const activeBrandIds = new Set(activeBrands.map((brand) => brand.id));
+    const activeWarrantyIds = new Set(activeWarranties.map((warranty) => warranty.id));
+    const rows = parsedRows.map(({ row, parsed }) => {
+      const messages = parsed.success
+        ? validateImportReferences({
+          product: parsed.data,
+          existingProducts: existingProductsBySlug,
+          existingSkuOwners,
+          duplicateSlugs,
+          duplicateSkuCodes,
+          activeCategoryIds,
+          activeBrandIds,
+          activeWarrantyIds,
+        })
+        : importErrors(parsed);
+      if (messages.length > 0) {
         return {
           rowNumber: row.rowNumber,
           status: 'VALIDATION_ERROR' as const,
           action: 'SKIP' as const,
           rawData: row.data as Prisma.InputJsonValue,
-          validationErrors: { messages: importErrors(parsed) } as Prisma.InputJsonValue,
+          validationErrors: { messages } as Prisma.InputJsonValue,
         };
       }
+      if (!parsed.success) throw new ConflictError();
       return {
         rowNumber: row.rowNumber,
         status: 'VALID' as const,
-        action: existingSlugs.has(parsed.data.slug) ? 'UPDATE' as const : 'CREATE' as const,
+        action: existingProductsBySlug.has(parsed.data.slug) ? 'UPDATE' as const : 'CREATE' as const,
         rawData: row.data as Prisma.InputJsonValue,
         normalizedData: serializableImportInput(parsed.data),
       };
@@ -1509,7 +1672,7 @@ export async function previewAdminProductImport(input: ProductImportPreviewInput
         validRows,
         failedRows,
         validationSummary: { validRows, failedRows },
-        ...(failedRows === 0 ? {} : { errorReport: { failedRows } }),
+        ...(failedRows === 0 ? {} : { errorReport: { code: 'PIM_IMPORT_VALIDATION_FAILED', failedRows } }),
         rows: { create: rows },
       },
       select: { id: true, status: true, totalRows: true, validRows: true, failedRows: true, rows: { where: { status: 'VALIDATION_ERROR' }, orderBy: { rowNumber: 'asc' }, select: { rowNumber: true, validationErrors: true } } },
@@ -1565,67 +1728,113 @@ async function createImportedProduct(input: CreateProductInput, transaction: Tra
   return product.id;
 }
 
+const PIM_IMPORT_APPLY_FAILED_CODE = 'PIM_IMPORT_APPLY_FAILED';
+const PIM_IMPORT_APPLY_LEASE_MS = 30 * 60 * 1_000;
+
+async function claimProductImportBatch(batchId: string): Promise<string> {
+  const attemptToken = randomUUID();
+  const startedAt = new Date();
+  let claim = await prisma.productImportBatch.updateMany({
+    where: { id: batchId, status: 'READY' },
+    data: { status: 'APPLYING', applyAttemptToken: attemptToken, applyStartedAt: startedAt },
+  });
+  if (claim.count === 1) return attemptToken;
+
+  // A process can terminate after its state claim but before the business
+  // transaction starts. That transaction cannot have committed partial data:
+  // all product, row, journal, and completion mutations are one transaction.
+  // Reclaim only a long-expired lease, then atomically claim it again.
+  const recovered = await prisma.productImportBatch.updateMany({
+    where: {
+      id: batchId,
+      status: 'APPLYING',
+      applyStartedAt: { lt: new Date(startedAt.getTime() - PIM_IMPORT_APPLY_LEASE_MS) },
+    },
+    data: { status: 'READY', applyAttemptToken: null, applyStartedAt: null },
+  });
+  if (recovered.count === 1) {
+    claim = await prisma.productImportBatch.updateMany({
+      where: { id: batchId, status: 'READY' },
+      data: { status: 'APPLYING', applyAttemptToken: attemptToken, applyStartedAt: startedAt },
+    });
+    if (claim.count === 1) return attemptToken;
+  }
+
+  const batch = await prisma.productImportBatch.findUnique({ where: { id: batchId }, select: { id: true } });
+  if (!batch) throw new NotFoundError();
+  throw new ConflictError();
+}
+
+async function markProductImportBatchFailed(batchId: string, attemptToken: string): Promise<void> {
+  await prisma.productImportBatch.updateMany({
+    where: { id: batchId, status: 'APPLYING', applyAttemptToken: attemptToken },
+    data: {
+      status: 'FAILED',
+      applyAttemptToken: null,
+      applyStartedAt: null,
+      // Never persist a driver error or stack trace in an admin-visible batch.
+      errorReport: { code: PIM_IMPORT_APPLY_FAILED_CODE },
+    },
+  });
+}
+
 export async function applyAdminProductImport(batchId: string, context: AdminAuditContext): Promise<ProductImportPreviewDto> {
   const audit = requireAuditContext(context);
-  const result = await prisma.$transaction(async (transaction) => {
-    const batch = await transaction.productImportBatch.findUnique({
-      where: { id: batchId },
-      include: { rows: { orderBy: { rowNumber: 'asc' } } },
-    });
-    if (!batch) throw new NotFoundError();
-    if (batch.status !== 'READY') throw new ConflictError();
-    if (batch.rows.length > 500) throw new ValidationError({ rows: 'Apply imports in batches of 500 rows or fewer.' });
-    await transaction.productImportBatch.update({ where: { id: batchId }, data: { status: 'APPLYING' } });
+  const attemptToken = await claimProductImportBatch(batchId);
+  try {
+    const result = await prisma.$transaction(async (transaction) => {
+      const batch = await transaction.productImportBatch.findUnique({
+        where: { id: batchId },
+        include: { rows: { orderBy: { rowNumber: 'asc' } } },
+      });
+      if (!batch || batch.status !== 'APPLYING' || batch.applyAttemptToken !== attemptToken) throw new ConflictError();
+      if (batch.rows.length > PIM_IMPORT_MAX_ROWS) throw new ValidationError({ rows: `Apply imports in batches of ${PIM_IMPORT_MAX_ROWS} rows or fewer.` });
 
-    for (const row of batch.rows) {
-      if (row.status !== 'VALID' || !row.normalizedData || !row.action || row.action === 'SKIP') throw new ConflictError();
-      const parsed = parseImportProduct(row.normalizedData as Record<string, unknown>);
-      if (!parsed.success) throw new ConflictError();
-      const existing = await transaction.catalogProduct.findUnique({ where: { slug: parsed.data.slug }, select: { id: true, name: true, summary: true, description: true } });
-      if (!existing) {
+      for (const row of batch.rows) {
+        if (row.status !== 'VALID' || !row.normalizedData || !row.action || row.action === 'SKIP') throw new ConflictError();
+        // Staging stores CreateProductInput JSON (with bigint values encoded as
+        // strings), not a flat CSV record. Re-validate that normalized shape
+        // before every write; Zod restores the bigint fields safely.
+        const parsed = createProductInput.safeParse(row.normalizedData);
+        if (!parsed.success) throw new ConflictError();
+        const existing = await transaction.catalogProduct.findUnique({ where: { slug: parsed.data.slug }, select: { id: true } });
+        // Preview rejects update rows. Re-check under the write transaction so
+        // a product created after preview cannot turn into a partial update.
+        if (existing) throw new ConflictError();
         const productId = await createImportedProduct(parsed.data, transaction);
         await transaction.productImportChange.create({
           data: { importBatchId: batchId, entityType: 'CatalogProduct', entityId: productId, action: 'CREATE', afterSnapshot: { slug: parsed.data.slug, name: parsed.data.name } },
         });
-      } else {
-        await transaction.catalogProduct.update({
-          where: { id: existing.id },
-          data: {
-            name: parsed.data.name,
-            ...(parsed.data.summary === undefined ? {} : { summary: parsed.data.summary }),
-            ...(parsed.data.description === undefined ? {} : { description: parsed.data.description }),
-            version: { increment: 1 },
-          },
-        });
-        await transaction.productImportChange.create({
-          data: {
-            importBatchId: batchId,
-            entityType: 'CatalogProduct',
-            entityId: existing.id,
-            action: 'UPDATE',
-            beforeSnapshot: { slug: parsed.data.slug, name: existing.name, summary: existing.summary, description: existing.description },
-            afterSnapshot: { slug: parsed.data.slug, name: parsed.data.name, summary: parsed.data.summary ?? null, description: parsed.data.description ?? null },
-          },
-        });
+        await transaction.productImportRow.update({ where: { id: row.id }, data: { status: 'APPLIED', appliedAt: new Date() } });
       }
-      await transaction.productImportRow.update({ where: { id: row.id }, data: { status: 'APPLIED', appliedAt: new Date() } });
-    }
-    const completed = await transaction.productImportBatch.update({
-      where: { id: batchId },
-      data: { status: 'COMPLETED', appliedAt: new Date() },
-      select: { id: true, status: true, totalRows: true, validRows: true, failedRows: true, rows: { where: { status: 'VALIDATION_ERROR' }, select: { rowNumber: true, validationErrors: true } } },
+      const completion = await transaction.productImportBatch.updateMany({
+        where: { id: batchId, status: 'APPLYING', applyAttemptToken: attemptToken },
+        data: { status: 'COMPLETED', appliedAt: new Date(), applyAttemptToken: null, applyStartedAt: null },
+      });
+      if (completion.count !== 1) throw new ConflictError();
+      const completed = await transaction.productImportBatch.findUnique({
+        where: { id: batchId },
+        select: { id: true, status: true, totalRows: true, validRows: true, failedRows: true, rows: { where: { status: 'VALIDATION_ERROR' }, select: { rowNumber: true, validationErrors: true } } },
+      });
+      if (!completed) throw new ConflictError();
+      await auditLogRepository.create(auditInput(audit, {
+        action: 'pim.product-import.applied', entityType: 'ProductImportBatch', entityId: batchId, metadata: { totalRows: completed.totalRows },
+      }), transaction);
+      return completed;
     });
-    await auditLogRepository.create(auditInput(audit, {
-      action: 'pim.product-import.applied', entityType: 'ProductImportBatch', entityId: batchId, metadata: { totalRows: completed.totalRows },
-    }), transaction);
-    return completed;
-  });
-  return {
-    id: result.id,
-    status: result.status,
-    totalRows: result.totalRows,
-    validRows: result.validRows,
-    failedRows: result.failedRows,
-    errors: result.rows.map((row) => ({ rowNumber: row.rowNumber, messages: ['Validation failed.'] })),
-  };
+    return {
+      id: result.id,
+      status: result.status,
+      totalRows: result.totalRows,
+      validRows: result.validRows,
+      failedRows: result.failedRows,
+      errors: result.rows.map((row) => ({ rowNumber: row.rowNumber, messages: ['Validation failed.'] })),
+    };
+  } catch (error) {
+    // The claim was committed before the business transaction. If the latter
+    // rolls back, this independent transition makes the batch terminal and
+    // prevents an accidental automatic re-apply of an unknown partial run.
+    await markProductImportBatchFailed(batchId, attemptToken);
+    throw error;
+  }
 }

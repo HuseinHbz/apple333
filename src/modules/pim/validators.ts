@@ -7,6 +7,34 @@ const nullableText = z.string().trim().min(1).max(20_000).nullable();
 const optionalText = z.string().trim().min(1).max(20_000).optional();
 const money = z.coerce.bigint().nonnegative();
 
+/**
+ * Keep import staging bounded independently from the transport layer. CSV
+ * staging already uses the same limits; the JSON preview endpoint must not be
+ * a less restrictive alternate path.
+ */
+export const PIM_IMPORT_MAX_ROW_FIELDS = 80;
+export const PIM_IMPORT_MAX_CELL_CHARS = 20_000;
+export const PIM_IMPORT_MAX_ROWS = 500;
+
+const productImportCellInput = z.union([
+  z.string().max(PIM_IMPORT_MAX_CELL_CHARS),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+]);
+
+export const productImportRowDataInput = z.record(
+  z.string().trim().min(1).max(128),
+  productImportCellInput,
+).superRefine((data, context) => {
+  if (Object.keys(data).length > PIM_IMPORT_MAX_ROW_FIELDS) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Import rows may contain at most ${PIM_IMPORT_MAX_ROW_FIELDS} fields.`,
+    });
+  }
+});
+
 export const catalogProductStatusInput = z.enum(['DRAFT', 'REVIEW', 'PUBLISHED', 'ARCHIVED']);
 export const brandStatusInput = z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']);
 export const productSkuStatusInput = z.enum(['ACTIVE', 'INACTIVE', 'DISCONTINUED']);
@@ -245,7 +273,7 @@ export const productImportPreviewInput = z.object({
   originalFileName: z.string().trim().min(1).max(255),
   sourceChecksum: z.string().trim().regex(/^[A-Fa-f0-9]{64}$/).optional(),
   sourceFileId: cuid.optional(),
-  rows: z.array(z.object({ rowNumber: z.number().int().min(1).max(1_000_000), data: z.record(z.unknown()) }).strict()).min(1).max(5_000),
+  rows: z.array(z.object({ rowNumber: z.number().int().min(1).max(1_000_000), data: productImportRowDataInput }).strict()).min(1).max(PIM_IMPORT_MAX_ROWS),
 }).strict();
 
 export const productImportListQuery = adminPageQuery.extend({

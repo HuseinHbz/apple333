@@ -693,6 +693,8 @@ model ProductImportBatch {
   failedRows        Int                 @default(0)
   validationSummary Json?
   errorReport       Json?
+  applyAttemptToken String?
+  applyStartedAt    DateTime?
   appliedAt         DateTime?
   rolledBackAt      DateTime?
   sourceFile        MediaFile?          @relation("ProductImportSourceFile", fields: [sourceFileId], references: [id], onDelete: SetNull)
@@ -703,6 +705,7 @@ model ProductImportBatch {
   updatedAt         DateTime            @updatedAt
 
   @@index([status, createdAt])
+  @@index([status, applyStartedAt])
   @@index([requestedById, createdAt])
   @@index([sourceChecksum])
 }

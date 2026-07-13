@@ -11,11 +11,14 @@ Every future project change must review this directory as required by
 
 ## Important current release gate
 
-The current repository has no reviewed Prisma migration bundle in
-`prisma/migrations/`. Therefore `install.sh --apply` intentionally refuses to
-initialize or change PostgreSQL. It never falls back to `prisma db push`,
-`migrate reset`, or an inferred schema. Create and approve an additive baseline
-migration first, then use this deployment bundle.
+This revision contains the Phase 04.1 initial PIM baseline in
+`prisma/migrations/20260713000000_phase_04_1_pim_activation`. It is reviewed
+only for a pristine isolated test/CI database and is **not** production
+approval. `install.sh` and `update.sh` refuse to apply it unless a later,
+separately reviewed release supplies an explicit per-command acknowledgement.
+They never fall back to `prisma db push`, `migrate reset`, or an inferred
+schema. Do not add that acknowledgement to `.env.production` or use it on an
+existing database.
 
 ## What the scripts protect
 

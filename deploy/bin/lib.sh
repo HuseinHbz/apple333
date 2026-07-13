@@ -11,6 +11,7 @@ readonly REPO_ROOT="$(cd "$DEPLOY_DIR/.." && pwd -P)"
 readonly ENV_FILE="${APPLE333_ENV_FILE:-$DEPLOY_DIR/.env.production}"
 readonly COMPOSE_FILE="$DEPLOY_DIR/compose.production.yml"
 readonly PROJECT_KEY="apple333-enterprise-platform"
+readonly PIM_BASELINE_MIGRATION="20260713000000_phase_04_1_pim_activation"
 
 log() { printf '[apple333 deploy] %s\n' "$*"; }
 warn() { printf '[apple333 deploy][warning] %s\n' "$*" >&2; }
@@ -183,6 +184,11 @@ require_docker_runtime() {
 require_migration_bundle() {
   [[ -d "$REPO_ROOT/prisma/migrations" ]] || die "No reviewed Prisma migration bundle exists. Refusing to install or change the database; never use prisma db push as a substitute."
   find "$REPO_ROOT/prisma/migrations" -name migration.sql -type f -print -quit | grep -q . || die "No reviewed Prisma migration SQL exists. Refusing database initialization."
+}
+
+require_phase_04_1_pim_baseline_approval() {
+  [[ -d "$REPO_ROOT/prisma/migrations/$PIM_BASELINE_MIGRATION" ]] || return 0
+  [[ "${APPLE333_APPROVE_PIM_BASELINE_MIGRATION:-}" == "$PIM_BASELINE_MIGRATION" ]] || die "Phase 04.1 PIM baseline is isolated-test-only until separately released. Do not run it against production or an existing database. A later reviewed release must provide an explicit per-command approval."
 }
 
 state_classification() {

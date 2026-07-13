@@ -3,6 +3,7 @@ import type {
   PublicCategoryDto,
   PublicProductCardDto,
   PublicProductDto,
+  PublicProductSeoDto,
   PublicProductVariantDto,
   ProductAvailability,
 } from '@/modules/catalog/types';
@@ -22,12 +23,17 @@ function publicMediaUrl(productId: string, mediaId: string): string {
 }
 
 function firstMedia(product: PublicProductRecord) {
-  return product.media.find((entry) => entry.media.deletedAt === null && entry.role === 'HERO')
-    ?? product.media.find((entry) => entry.media.deletedAt === null);
+  return product.media.find((entry) => isPublicMedia(entry) && entry.role === 'HERO')
+    ?? product.media.find(isPublicMedia);
 }
 
 function activeVariants(product: PublicProductRecord): PublicVariantRecord[] {
-  return product.variants.filter((variant) => variant.isActive);
+  return product.variants.filter((variant) => (
+    variant.isActive
+    && variant.deletedAt === null
+    && variant.skuRecord?.status === 'ACTIVE'
+    && variant.skuRecord.deletedAt === null
+  ));
 }
 
 function startingVariant(product: PublicProductRecord): PublicVariantRecord {
@@ -38,8 +44,39 @@ function startingVariant(product: PublicProductRecord): PublicVariantRecord {
 }
 
 function category(product: PublicProductRecord): PublicProductCardDto['category'] {
-  if (!product.category || !product.category.isActive) return null;
+  if (!product.category || !product.category.isActive || product.category.deletedAt !== null) return null;
   return { slug: product.category.slug, name: product.category.name };
+}
+
+function isPublicMedia(entry: PublicProductRecord['media'][number]): boolean {
+  return entry.media.deletedAt === null
+    && (!entry.variant || (entry.variant.isActive && entry.variant.deletedAt === null));
+}
+
+function safeSeoText(value: string | null, maxLength: number): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized.slice(0, maxLength) : null;
+}
+
+function safeCanonicalUrl(value: string | null): string | null {
+  const normalized = safeSeoText(value, 2_048);
+  if (!normalized) return null;
+
+  try {
+    const url = new URL(normalized);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function seo(product: PublicProductRecord): PublicProductSeoDto {
+  return {
+    metaTitle: safeSeoText(product.seo?.metaTitle ?? product.seoTitle, 70),
+    metaDescription: safeSeoText(product.seo?.metaDescription ?? product.seoDescription, 170),
+    canonicalUrl: safeCanonicalUrl(product.seo?.canonicalUrl ?? null),
+    noIndex: product.seo?.noIndex ?? false,
+  };
 }
 
 function asCard(product: PublicProductRecord): PublicProductCardDto {
@@ -100,9 +137,10 @@ export function toPublicProduct(product: PublicProductRecord): PublicProductDto 
     description: product.description,
     specifications: stringSpecifications(product.specifications),
     media: product.media
-      .filter((entry) => entry.media.deletedAt === null)
+      .filter(isPublicMedia)
       .map((entry) => ({ id: entry.mediaId, role: entry.role, altText: entry.altText, url: publicMediaUrl(product.id, entry.mediaId) })),
     variants: activeVariants(product).map(asVariant),
+    seo: seo(product),
   };
 }
 

@@ -7,6 +7,9 @@
   prune`, `docker compose down -v`, blanket `rm -rf`, or automatic seeding.
 - Production database changes require reviewed Prisma migrations. A missing
   migration bundle is a hard stop, not permission to infer a schema.
+- The named Phase 04.1 PIM baseline is test/CI-only until a later reviewed
+  release explicitly acknowledges it per command; it must never be treated as
+  an automatic adoption path for an existing database.
 - Secrets are never printed, committed, or copied into deployment state. The
   protected env parser accepts only a declared plain `KEY=value` allowlist and
   is never shell-sourced.

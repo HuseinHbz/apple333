@@ -13,7 +13,7 @@ function normalizeCell(value: string): string {
  * formulas. Parsed cells remain plain text and are subsequently validated by
  * the server-side PIM import contract.
  */
-export function parsePimCsv(text: string, maxRows = 5_000): readonly CsvImportRow[] {
+export function parsePimCsv(text: string, maxRows = 500): readonly CsvImportRow[] {
   const source = text.replace(/^\uFEFF/, '');
   const rows: string[][] = [];
   let row: string[] = [];
