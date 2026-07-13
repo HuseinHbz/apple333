@@ -2,11 +2,14 @@
 
 ## Current decision
 
-**Not approved yet.** The implementation and isolated CI harness are ready for
-verification, but this workstation has no approved disposable PostgreSQL
-runtime. Phase 04.1 cannot receive the required 9.8/10 approval until the
-remote `pim-database` job successfully applies the migration and runs the real
-persistence suite.
+**Approved for Phase 04.1 engineering scope: 9.8/10.** This approval is based
+on final source commit `b82bef573928393ab79354102b6d196cdd33c280`, the
+[Quality run 29238326940](https://github.com/HuseinHbz/apple333/actions/runs/29238326940),
+and the [performance run 29238326931](https://github.com/HuseinHbz/apple333/actions/runs/29238326931).
+
+It is **not** approval to deploy the initial baseline migration to production,
+to a legacy database, or to start Phase 05 automatically. The explicit
+production baseline gate remains in force.
 
 ## Delivered on branch
 
@@ -22,30 +25,31 @@ persistence suite.
 - Public catalog visibility and safe SEO projection hardening.
 - Production deploy release gate that blocks the Phase 04.1 baseline unless a
   later reviewed release deliberately acknowledges it per command.
+- Guarded 10k/100k PostgreSQL and real HTTP performance harness, artifact
+  upload, a 3,000ms endpoint p95 gate, and a 250ms query p95 gate.
 
 ## Acceptance matrix
 
-| Requirement | Status | Evidence |
-| --- | --- | --- |
-| Add-only migration manually reviewed | Pass | `01-migration-review.md`, `03-migration-analysis.md`, static migration test |
-| No destructive SQL | Pass | SQL scan/test: no `DROP`, `TRUNCATE`, `DELETE`, or destructive `ALTER` |
-| Prisma schema/client validation | Pass | `pnpm prisma:validate`, `pnpm prisma:generate` with inert URL |
-| Isolated target preflight | Pass | strict environment unit tests and no-network preflight |
-| `migrate deploy` / `migrate status` on isolated PostgreSQL | Pending CI | no local Docker/PostgreSQL runtime |
-| Real PIM persistence / public API / import rollback | Pending CI | guarded `tests/database/pim-persistence.test.ts` and CI job configured |
-| Unit, integration, lint, typecheck, build, E2E | Pass locally | 85 full tests, 22 integration tests, 7 E2E tests; strict typecheck, ESLint, and production build pass |
-| Performance at 10k/100k data | Pending | benchmark environment and measurements not yet available |
-| Security / rollback documentation | Pass as design review | `07-security-review.md`, `08-rollback-plan.md` |
+| Requirement                                                | Status                             | Evidence                                                                                                                                  |
+| ---------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Add-only migration manually reviewed                       | Pass                               | `01-migration-review.md`, `03-migration-analysis.md`, static migration test                                                               |
+| No destructive SQL                                         | Pass                               | SQL scan/test: no `DROP`, `TRUNCATE`, `DELETE`, or destructive `ALTER`                                                                    |
+| Prisma schema/client validation                            | Pass                               | `pnpm prisma:validate`, `pnpm prisma:generate` with inert URL                                                                             |
+| Isolated target preflight                                  | Pass                               | strict environment unit tests and no-network preflight                                                                                    |
+| `migrate deploy` / `migrate status` on isolated PostgreSQL | Pass                               | Quality run `29238326940`, job `86778151237`: pristine 0-table target, reviewed migration applied, 39-table inspection, status up to date |
+| Real PIM persistence / public API / import rollback        | Pass                               | same CI job: `tests/database/pim-persistence.test.ts`, 5/5 passed in 770ms                                                                |
+| Unit, integration, lint, typecheck, build, E2E             | Pass                               | same Quality run: 92 tests, 22 integration tests, strict typecheck, ESLint, production build, deployment tests, and 7 Playwright tests    |
+| Performance at 10k/100k data                               | Pass                               | performance run `29238326931`, job `86778151181`, uploaded evidence artifact, HTTP p95 <= 3,000ms and query p95 <= 250ms                  |
+| Security / rollback documentation                          | Pass with documented residual risk | `07-security-review.md`, `08-rollback-plan.md`; two moderate third-party advisories remain open                                           |
 
 ## Remaining blockers
 
-1. Run and pass the disposable PostgreSQL CI job; preserve the migration status
-   and test logs.
-2. Run the final full local/CI quality suite after the final code changes.
-3. Produce isolated 10k/100k PostgreSQL benchmark evidence with query plans and
-   latency measurements.
-4. Schedule an approved dependency upgrade for the two moderate production
+1. Schedule an approved dependency upgrade for the two moderate production
    advisory paths recorded in `07-security-review.md`.
+2. Design a separate production/legacy migration adoption plan before any
+   baseline deployment attempt.
+3. Approve a search strategy before claiming scalable free-text catalog search.
 
-Until those items are complete, do not start Phase 05 or deploy this migration
-to production.
+No Phase 05 implementation was started by this phase. Do not deploy this
+migration to production until the separate release authority explicitly
+approves the guarded baseline procedure.
