@@ -7,9 +7,11 @@
   prune`, `docker compose down -v`, blanket `rm -rf`, or automatic seeding.
 - Production database changes require reviewed Prisma migrations. A missing
   migration bundle is a hard stop, not permission to infer a schema.
-- The named Phase 04.1 PIM baseline is test/CI-only until a later reviewed
-  release explicitly acknowledges it per command; it must never be treated as
-  an automatic adoption path for an existing database.
+- The named Phase 04.1 PIM baseline is test/CI-only and hard-blocked by this
+  release. No environment variable, command option, or local state edit can
+  lift the block. A later reviewed release must introduce a release-specific
+  approval and adoption procedure; it must never be an automatic adoption path
+  for an existing database.
 - Secrets are never printed, committed, or copied into deployment state. The
   protected env parser accepts only a declared plain `KEY=value` allowlist and
   is never shell-sourced.
@@ -20,8 +22,9 @@
 
 A resource is reusable only when all applicable evidence agrees:
 
-1. state file: project key, environment, compose project, and canonical install
-   root match the current checkout;
+1. state file: project key, environment, compose project, canonical install
+   root, install ID, database name, and database schema match the current
+   checkout/configuration;
 2. Docker labels: `com.apple333.project`, `com.apple333.managed`, environment,
    and install ID match; and
 3. PostgreSQL marker: dedicated schema contains an active
@@ -35,11 +38,27 @@ The possible classifications are:
 | `OWNED_CURRENT` | May be reused/updated by the matching deployment scripts |
 | `OWNED_OTHER_APPLE333` | Stop; another Apple333 installation owns it |
 | `EMPTY` / `NOT_CREATED` | May be initialized only by a fresh install after migrations exist |
+| `RECOVERY_REQUIRED` | Stop; an owned marker records an incomplete, failed, or uninstall-in-progress operation |
 | `FOREIGN` / `AMBIGUOUS` | Stop and ask for a new isolated target or separate approved cleanup |
 | `UNREACHABLE` | Stop database-changing work until the resource can be inspected |
 
 Names alone never prove ownership. A database called `apple333`, a generic
 volume called `postgres_data`, or a `public` schema is not accepted as proof.
+
+For an update, the PostgreSQL, Redis, and MinIO volumes must each still be
+`OWNED_CURRENT`. The scripts do not recreate a missing data volume, even when
+the state file is otherwise valid. Treat that condition as a recovery incident
+and stop for investigation or a reviewed restore.
+
+## Phase 04.1 release gate
+
+The initial PIM migration creates the accumulated platform schema and has only
+been exercised on a pristine disposable PostgreSQL target. Its current server
+deployment status is **BLOCKED**. The immutable guard is intentionally inside
+the executable deployment library, not an operator-controlled `.env` value.
+The release requirements for lifting it are documented in
+[RELEASE-GATES.md](RELEASE-GATES.md). A typed confirmation is not an approval
+for this migration.
 
 ## Foreign resource consent
 

@@ -76,4 +76,77 @@ describe('deployment safety assets', () => {
     expect(nginx).toContain('limit_req_zone $binary_realip_remote_addr');
     expect(nginx).toContain('proxy_set_header X-Forwarded-For $realip_remote_addr');
   });
+
+  it('hard-blocks the Phase 04.1 PIM baseline before any deployment mutation', () => {
+    const library = readDeploy('bin/lib.sh');
+    const install = readDeploy('bin/install.sh');
+    const update = readDeploy('bin/update.sh');
+    const readme = readDeploy('README.md');
+    const safetyPolicy = readDeploy('SAFETY-POLICY.md');
+    const envTemplate = readDeploy('.env.production.example');
+    const releaseGates = readDeploy('RELEASE-GATES.md');
+    const gateStart = library.indexOf('require_phase_04_1_pim_baseline_approval()');
+    const gateEnd = library.indexOf('\n}\n', gateStart);
+    const gate = library.slice(gateStart, gateEnd);
+
+    expect(gate).toContain('No environment variable, command flag, or state-file edit');
+    expect(gate).not.toContain('APPLE333_APPROVE_PIM_BASELINE_MIGRATION');
+    expect(envTemplate).not.toContain('APPLE333_APPROVE_PIM_BASELINE_MIGRATION');
+    expect(readme).toContain('hard-blocks it');
+    expect(safetyPolicy).toContain('test/CI-only and hard-blocked by this');
+    expect(releaseGates).toContain('**BLOCKED**');
+
+    for (const script of [install, update]) {
+      const guard = script.indexOf('require_phase_04_1_pim_baseline_approval');
+
+      expect(guard).toBeGreaterThanOrEqual(0);
+      expect(guard).toBeLessThan(script.indexOf('compose up -d'));
+      expect(guard).toBeLessThan(script.indexOf('build_release_images'));
+      expect(guard).toBeLessThan(script.indexOf('run_prisma migrate deploy'));
+    }
+  });
+
+  it('requires verified container, schema, and core-volume ownership', () => {
+    const library = readDeploy('bin/lib.sh');
+    const preflight = readDeploy('bin/preflight.sh');
+    const install = readDeploy('bin/install.sh');
+    const update = readDeploy('bin/update.sh');
+
+    expect(library).toContain('compose_container_classification');
+    expect(library).toContain('docker container inspect -f');
+    expect(library).toContain('com.apple333.environment');
+    expect(library).toContain('state_install_id');
+    expect(library).toContain('t.typrelid = 0');
+    expect(library).toContain('RECOVERY_REQUIRED');
+    expect(preflight).toContain('--assert-pristine-after-start');
+    expect(preflight).toContain('"$postgres_volume_status" "$redis_volume_status" "$minio_volume_status"');
+    expect(preflight).toContain('update.sh will not initialize replacement data');
+    expect(install).toContain('preflight.sh" --assert-pristine-after-start');
+    expect(update).toContain('preflight.sh" --assert-owned');
+    expect(update).toContain('Database marker no longer proves ownership of this running deployment');
+  });
+
+  it('keeps migration updates backup-first and deployment scripts free of broad database commands', () => {
+    const library = readDeploy('bin/lib.sh');
+    const update = readDeploy('bin/update.sh');
+    const workflow = readRoot('.github/workflows/quality.yml');
+    const scripts = [
+      'bin/install.sh',
+      'bin/update.sh',
+      'bin/uninstall.sh',
+      'bin/preflight.sh',
+      'bin/purge-unrelated.sh',
+    ].map(readDeploy).join('\n');
+
+    expect(update.indexOf('backup_database')).toBeLessThan(update.indexOf('set_database_marker_status installing'));
+    expect(update.indexOf('set_database_marker_status installing')).toBeLessThan(update.indexOf('run_prisma migrate status'));
+    expect(update.indexOf('run_prisma migrate status')).toBeLessThan(update.indexOf('run_prisma migrate deploy'));
+    expect(library).toContain('require_command sha256sum');
+    expect(library).toContain('sha256sum --check');
+    expect(scripts).not.toMatch(/run_prisma\s+db\s+push/);
+    expect(scripts).not.toMatch(/run_prisma\s+migrate\s+reset/);
+    expect(scripts).not.toMatch(/^\s*docker\s+system\s+prune/m);
+    expect(scripts).not.toMatch(/^\s*docker\s+compose.*\sdown\s+-v/m);
+    expect(workflow).toContain('bash -n deploy/bin/*.sh');
+  });
 });

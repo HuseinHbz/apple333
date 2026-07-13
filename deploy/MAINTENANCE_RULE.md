@@ -8,6 +8,7 @@ Update this folder whenever a change affects any of the following:
 - Docker image/build/runtime, Node or package-manager version, services, queues,
   storage, logging, or health/readiness endpoints;
 - Prisma schema, migrations, database bootstrap/backups, or data retention;
+- release gates, database-adoption authority, or migration approval status;
 - install, update, rollback, monitoring, or uninstall behavior.
 
 If a change has no deployment impact, record that conclusion in its PR or

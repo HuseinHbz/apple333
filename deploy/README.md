@@ -14,27 +14,31 @@ Every future project change must review this directory as required by
 This revision contains the Phase 04.1 initial PIM baseline in
 `prisma/migrations/20260713000000_phase_04_1_pim_activation`. It is reviewed
 only for a pristine isolated test/CI database and is **not** production
-approval. `install.sh` and `update.sh` refuse to apply it unless a later,
-separately reviewed release supplies an explicit per-command acknowledgement.
-They never fall back to `prisma db push`, `migrate reset`, or an inferred
-schema. Do not add that acknowledgement to `.env.production` or use it on an
-existing database.
+approval. This release hard-blocks it in both `install.sh` and
+`update.sh --apply-migrations`; no environment variable, command flag, or
+state-file edit can override the block. A later reviewed release must carry a
+release-specific approval and adoption procedure. See
+[RELEASE-GATES.md](RELEASE-GATES.md). The scripts never fall back to
+`prisma db push`, `migrate reset`, or an inferred schema.
 
 ## What the scripts protect
 
 Before every installation, update, or removal, the scripts inspect:
 
 - the deployment state marker in `APPLE333_STATE_DIR`;
-- Docker volumes, network, and containers by explicit `com.apple333.*` labels;
+- Docker volumes, network, and Compose-project containers by explicit
+  `com.apple333.*` labels;
 - the target PostgreSQL schema and its `apple333_deployment_metadata` marker;
 - the configured host port; and
 - the exact source checkout path, environment, compose project, and install ID.
 
 Only a resource with matching Apple333 ownership evidence is reused
 automatically. A resource with the same name is **not** enough evidence.
-Unknown, foreign, ambiguous, or occupied resources stop the operation. The
-scripts ask whether to display removal guidance but never delete anything
-automatically.
+An update also requires its PostgreSQL, Redis, and MinIO data volumes to still
+be present and owned by the current installation; it will not recreate a
+missing data volume. Unknown, foreign, ambiguous, or occupied resources stop
+the operation. The scripts ask whether to display removal guidance but never
+delete anything automatically.
 
 ## Files
 
@@ -42,6 +46,7 @@ automatically.
 | --- | --- |
 | `.env.production.example` | Non-secret production configuration template |
 | `compose.production.yml` | Canonical isolated app, one-shot migration task, nginx, PostgreSQL, Redis, MinIO, and optional observability stack |
+| `RELEASE-GATES.md` | Current migration deployment blocks and evidence required for a future release |
 | `monitoring/` | Private Prometheus scrape/alert rules and Grafana datasource provisioning |
 | `nginx.public-edge.conf.template` | Reviewed opt-in public TLS/redirect configuration template |
 | `systemd/` | Uninstalled, site-reviewed encrypted-backup service/timer templates |
@@ -57,7 +62,7 @@ automatically.
 ## Server prerequisites
 
 - Linux server with Docker Engine and Docker Compose v2;
-- `bash`, `realpath`, `openssl`, `flock`, `curl`, `age`, and standard GNU user tools;
+- `bash`, `realpath`, `openssl`, `flock`, `curl`, `age`, `sha256sum`, and standard GNU user tools;
 - an HTTPS reverse proxy or load balancer in front of the loopback-bound nginx
   port; and
 - a dedicated `/opt/apple333` checkout and `/var/lib/apple333` state/backup
@@ -89,7 +94,9 @@ chmod 600 deploy/.env.production
 # relying on it for recovery; a different local pathname is not enough.
 
 bash deploy/bin/preflight.sh
-# After a reviewed Prisma migration bundle exists:
+# This current release will stop here while the Phase 04.1 PIM baseline is
+# production-blocked. Do not try to override it. Run only after a later
+# reviewed release lifts the specific release gate.
 bash deploy/bin/install.sh --apply
 ```
 
@@ -129,7 +136,10 @@ bash deploy/bin/update.sh --apply --skip-migrations
 ```
 
 Use `--apply-migrations` only after reviewing the SQL, backup, compatibility,
-and rollback plan for that release.
+rollback plan, and every applicable entry in
+[RELEASE-GATES.md](RELEASE-GATES.md). For the current Phase 04.1 PIM baseline,
+that option deliberately stops rather than applying the test/CI-only initial
+schema.
 
 ## Status and logs
 

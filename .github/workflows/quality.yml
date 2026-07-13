@@ -147,6 +147,9 @@ jobs:
       - name: Validate deployment assets
         run: pnpm test:deploy
 
+      - name: Check deployment shell syntax
+        run: bash -n deploy/bin/*.sh
+
       - name: Build application
         run: NODE_ENV=production pnpm build
 

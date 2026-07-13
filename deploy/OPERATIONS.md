@@ -10,6 +10,11 @@ bash deploy/bin/preflight.sh
 Review ownership, port, and database status. Treat `FOREIGN`,
 `OWNED_OTHER_APPLE333`, and `UNREACHABLE` as stop conditions.
 
+The current Phase 04.1 PIM baseline is also a stop condition for fresh server
+installation and migration-bearing updates. It is a CI/test-only initial
+schema, not a production approval. It cannot be enabled with an environment
+variable; see [RELEASE-GATES.md](RELEASE-GATES.md).
+
 ## Environment changes
 
 After changing a domain, port, secret, S3 setting, PostgreSQL credential, or
@@ -61,3 +66,5 @@ certificate configuration; configure a new Apple333 hostname explicitly.
 | Backup refuses to run | Verify age recipient, off-host path, permissions, and current ownership; do not use an unencrypted ad-hoc dump as a substitute. |
 | Update fails after migration | Keep services/data, inspect the backup and migration logs, then perform a reviewed recovery. |
 | State marker mismatch | Do not edit it manually. Treat the deployment as another/legacy environment until ownership is proven. |
+| Database marker reports `RECOVERY_REQUIRED` | Stop. Preserve the data and logs; do not rerun install. Review the failed/unfinished migration and recovery plan before any manual action. |
+| Required data volume missing | Stop. Do not run update to recreate PostgreSQL, Redis, or MinIO; investigate the host/volume and use a reviewed restore if needed. |

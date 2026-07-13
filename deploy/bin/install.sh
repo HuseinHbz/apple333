@@ -57,6 +57,9 @@ wait_for_service_health postgres 40
 wait_for_service_health redis 40
 wait_for_service_health minio 40
 
+log "Re-checking the newly started data services before creating any database marker."
+"$SCRIPT_DIR/preflight.sh" --assert-pristine-after-start
+
 log "Creating the Apple333 database ownership marker in installing state."
 set_database_marker_status installing
 migration_started=true

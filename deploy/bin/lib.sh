@@ -114,6 +114,7 @@ load_environment() {
   [[ ! -L "$APPLE333_BACKUP_DIR" ]] || die "APPLE333_BACKUP_DIR must not be a symlink"
   [[ "$POSTGRES_DB" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || die "POSTGRES_DB contains unsafe characters"
   [[ "$POSTGRES_SCHEMA" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || die "POSTGRES_SCHEMA contains unsafe characters"
+  [[ "$POSTGRES_USER" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || die "POSTGRES_USER contains unsafe characters"
   [[ "$POSTGRES_SCHEMA" != "public" ]] || die "POSTGRES_SCHEMA must be dedicated to Apple333; public is not permitted"
   [[ "$APPLE333_HTTP_BIND" == "127.0.0.1" || "$APPLE333_HTTP_BIND" == "::1" ]] || die "APPLE333_HTTP_BIND must be loopback-only; terminate TLS at the approved public edge"
   [[ "$APPLE333_HTTP_PORT" =~ ^[0-9]{2,5}$ ]] || die "APPLE333_HTTP_PORT must be numeric"
@@ -188,7 +189,7 @@ require_migration_bundle() {
 
 require_phase_04_1_pim_baseline_approval() {
   [[ -d "$REPO_ROOT/prisma/migrations/$PIM_BASELINE_MIGRATION" ]] || return 0
-  [[ "${APPLE333_APPROVE_PIM_BASELINE_MIGRATION:-}" == "$PIM_BASELINE_MIGRATION" ]] || die "Phase 04.1 PIM baseline is isolated-test-only until separately released. Do not run it against production or an existing database. A later reviewed release must provide an explicit per-command approval."
+  die "Phase 04.1 PIM baseline is blocked for every managed server operation in this release. It is approved only for a pristine isolated test/CI database. No environment variable, command flag, or state-file edit can grant production or legacy-database authorization. A future reviewed release must introduce its own release-specific approval and adoption procedure before this baseline can be deployed."
 }
 
 state_classification() {
@@ -196,12 +197,15 @@ state_classification() {
     printf 'ABSENT'
     return 0
   fi
-  local state_project state_root state_compose state_environment
+  local state_project state_root state_compose state_environment state_install_id state_database state_schema
   state_project="$(state_value PROJECT_ID)"
   state_root="$(state_value INSTALL_ROOT)"
   state_compose="$(state_value COMPOSE_PROJECT_NAME)"
   state_environment="$(state_value ENVIRONMENT)"
-  if [[ "$state_project" == "$PROJECT_KEY" && "$state_root" == "$REPO_ROOT" && "$state_compose" == "$COMPOSE_PROJECT_NAME" && "$state_environment" == "$APPLE333_ENVIRONMENT" ]]; then
+  state_install_id="$(state_value INSTALL_ID)"
+  state_database="$(state_value DATABASE_NAME)"
+  state_schema="$(state_value DATABASE_SCHEMA)"
+  if [[ "$state_project" == "$PROJECT_KEY" && "$state_root" == "$REPO_ROOT" && "$state_compose" == "$COMPOSE_PROJECT_NAME" && "$state_environment" == "$APPLE333_ENVIRONMENT" && "$state_install_id" == "${APPLE333_INSTALL_ID:-}" && -n "$state_install_id" && "$state_database" == "$POSTGRES_DB" && "$state_schema" == "$POSTGRES_SCHEMA" ]]; then
     printf 'OWNED_CURRENT'
   elif [[ "$state_project" == "$PROJECT_KEY" ]]; then
     printf 'OWNED_OTHER_APPLE333'
@@ -216,11 +220,23 @@ docker_resource_classification() {
     printf 'ABSENT'
     return 0
   fi
-  local project managed install_id
-  project="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.project" }}' "$name" 2>/dev/null || true)"
-  managed="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.managed" }}' "$name" 2>/dev/null || true)"
-  install_id="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.install-id" }}' "$name" 2>/dev/null || true)"
-  if [[ "$project" == "$PROJECT_KEY" && "$managed" == "true" && -n "$install_id" && "$install_id" == "${APPLE333_INSTALL_ID:-}" ]]; then
+  local project managed environment install_id
+  case "$kind" in
+    container)
+      project="$(docker container inspect -f '{{ index .Config.Labels "com.apple333.project" }}' "$name" 2>/dev/null || true)"
+      managed="$(docker container inspect -f '{{ index .Config.Labels "com.apple333.managed" }}' "$name" 2>/dev/null || true)"
+      environment="$(docker container inspect -f '{{ index .Config.Labels "com.apple333.environment" }}' "$name" 2>/dev/null || true)"
+      install_id="$(docker container inspect -f '{{ index .Config.Labels "com.apple333.install-id" }}' "$name" 2>/dev/null || true)"
+      ;;
+    volume|network)
+      project="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.project" }}' "$name" 2>/dev/null || true)"
+      managed="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.managed" }}' "$name" 2>/dev/null || true)"
+      environment="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.environment" }}' "$name" 2>/dev/null || true)"
+      install_id="$(docker "$kind" inspect -f '{{ index .Labels "com.apple333.install-id" }}' "$name" 2>/dev/null || true)"
+      ;;
+    *) die "Unsupported Docker resource kind: $kind" ;;
+  esac
+  if [[ "$project" == "$PROJECT_KEY" && "$managed" == "true" && "$environment" == "$APPLE333_ENVIRONMENT" && -n "$install_id" && "$install_id" == "${APPLE333_INSTALL_ID:-}" ]]; then
     printf 'OWNED_CURRENT'
   elif [[ "$project" == "$PROJECT_KEY" && "$managed" == "true" ]]; then
     printf 'OWNED_OTHER_APPLE333'
@@ -229,10 +245,57 @@ docker_resource_classification() {
   fi
 }
 
+compose_container_ids() {
+  docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME"
+}
+
+compose_container_classification() {
+  local container status found_current=false
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    status="$(docker_resource_classification container "$container")"
+    case "$status" in
+      OWNED_CURRENT) found_current=true ;;
+      OWNED_OTHER_APPLE333)
+        printf 'OWNED_OTHER_APPLE333'
+        return 0
+        ;;
+      FOREIGN|ABSENT)
+        printf 'FOREIGN'
+        return 0
+        ;;
+    esac
+  done < <(compose_container_ids)
+
+  if [[ "$found_current" == true ]]; then
+    printf 'OWNED_CURRENT'
+  else
+    printf 'ABSENT'
+  fi
+}
+
+compose_container_evidence() {
+  local line evidence=""
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    evidence+="${evidence:+;}$line"
+  done < <(docker ps -a --format '{{.ID}} {{.Names}}' \
+    --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")
+  printf '%s' "$evidence"
+}
+
 postgres_container_id() {
-  docker ps -aq \
+  local container status match=""
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    status="$(docker_resource_classification container "$container")"
+    [[ "$status" == "OWNED_CURRENT" ]] || continue
+    [[ -z "$match" ]] || return 0
+    match="$container"
+  done < <(docker ps -aq \
     --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
-    --filter 'label=com.docker.compose.service=postgres' | head -n 1
+    --filter 'label=com.docker.compose.service=postgres')
+  printf '%s' "$match"
 }
 
 postgres_query() {
@@ -249,14 +312,18 @@ database_classification() {
   state="$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)"
   [[ "$state" == "true" ]] || { printf 'UNREACHABLE'; return 0; }
 
-  local schema_exists table_exists metadata table_count
+  local schema_exists schema_owner table_exists metadata schema_object_count
   schema_exists="$(postgres_query "$container" "SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = '$POSTGRES_SCHEMA')")" || { printf 'UNREACHABLE'; return 0; }
   [[ "$schema_exists" == "t" ]] || { printf 'EMPTY'; return 0; }
-  table_exists="$(postgres_query "$container" "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '$POSTGRES_SCHEMA' AND table_name = 'apple333_deployment_metadata')")" || { printf 'UNREACHABLE'; return 0; }
+  schema_owner="$(postgres_query "$container" "SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '$POSTGRES_SCHEMA'")" || { printf 'UNREACHABLE'; return 0; }
+  [[ "$schema_owner" == "$POSTGRES_USER" ]] || { printf 'FOREIGN'; return 0; }
+  table_exists="$(postgres_query "$container" "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '$POSTGRES_SCHEMA' AND table_name = 'apple333_deployment_metadata' AND table_type = 'BASE TABLE')")" || { printf 'UNREACHABLE'; return 0; }
   if [[ "$table_exists" == "t" ]]; then
     metadata="$(postgres_query "$container" "SELECT project_id || '|' || install_id || '|' || environment || '|' || status FROM \"$POSTGRES_SCHEMA\".apple333_deployment_metadata WHERE id = 1")" || { printf 'UNREACHABLE'; return 0; }
     if [[ "$metadata" == "$PROJECT_KEY|${APPLE333_INSTALL_ID:-}|$APPLE333_ENVIRONMENT|active" ]]; then
       printf 'OWNED_CURRENT'
+    elif [[ "$metadata" == "$PROJECT_KEY|${APPLE333_INSTALL_ID:-}|$APPLE333_ENVIRONMENT|installing" || "$metadata" == "$PROJECT_KEY|${APPLE333_INSTALL_ID:-}|$APPLE333_ENVIRONMENT|failed" || "$metadata" == "$PROJECT_KEY|${APPLE333_INSTALL_ID:-}|$APPLE333_ENVIRONMENT|uninstalling" ]]; then
+      printf 'RECOVERY_REQUIRED'
     elif [[ "$metadata" == "$PROJECT_KEY|"* ]]; then
       printf 'OWNED_OTHER_APPLE333'
     else
@@ -264,8 +331,13 @@ database_classification() {
     fi
     return 0
   fi
-  table_count="$(postgres_query "$container" "SELECT count(*) FROM information_schema.tables WHERE table_schema = '$POSTGRES_SCHEMA' AND table_type = 'BASE TABLE'")" || { printf 'UNREACHABLE'; return 0; }
-  [[ "$table_count" == "0" ]] && printf 'EMPTY' || printf 'FOREIGN'
+  # A named dedicated schema is never assumed safe merely because it contains
+  # no base table. Inspect relations, routines, and standalone types, then
+  # treat every unmarked schema as foreign/ambiguous. A pristine target has no
+  # dedicated schema at all and is the only state classified as EMPTY.
+  schema_object_count="$(postgres_query "$container" "SELECT count(*) FROM (SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = '$POSTGRES_SCHEMA' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') UNION SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = '$POSTGRES_SCHEMA' UNION SELECT t.oid FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = '$POSTGRES_SCHEMA' AND t.typrelid = 0) AS schema_objects")" || { printf 'UNREACHABLE'; return 0; }
+  [[ "$schema_object_count" =~ ^[0-9]+$ ]] || { printf 'UNREACHABLE'; return 0; }
+  printf 'FOREIGN'
 }
 
 write_state_marker() {
@@ -316,6 +388,7 @@ backup_database() {
   : "${APPLE333_BACKUP_AGE_RECIPIENT:?APPLE333_BACKUP_AGE_RECIPIENT is required for encrypted database backups}"
   has_placeholder "$APPLE333_BACKUP_AGE_RECIPIENT" && die "APPLE333_BACKUP_AGE_RECIPIENT still contains a placeholder"
   require_command age
+  require_command sha256sum
 
   local container timestamp output temporary checksum output_name
   container="$(postgres_container_id)"
@@ -336,6 +409,7 @@ backup_database() {
   # Keep the manifest path relative so the copied checksum validates the file
   # at its destination, never a similarly named local source artifact.
   (cd "$APPLE333_BACKUP_DIR" && sha256sum "$output_name" > "$(basename "$checksum")")
+  (cd "$APPLE333_BACKUP_DIR" && sha256sum --check "$(basename "$checksum")" >/dev/null) || die "Encrypted database backup checksum verification failed"
   chmod 600 "$output" "$checksum"
   BACKUP_DATABASE_OUTPUT="$output"
   BACKUP_DATABASE_CHECKSUM="$checksum"

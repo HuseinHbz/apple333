@@ -13,9 +13,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --assert-installable) assertion="installable" ;;
     --assert-owned) assertion="owned" ;;
+    --assert-pristine-after-start) assertion="pristine-after-start" ;;
     --help)
       cat <<'EOF'
-Usage: bash deploy/bin/preflight.sh [--assert-installable|--assert-owned]
+Usage: bash deploy/bin/preflight.sh [--assert-installable|--assert-owned|--assert-pristine-after-start]
 
 Default mode is read-only and reports ownership evidence. Assertion modes exit
 non-zero when it is unsafe to install/update/uninstall.
@@ -47,14 +48,10 @@ grafana_volume_status="$(docker_resource_classification volume "$grafana_volume"
 network_status="$(docker_resource_classification network "$private_network")"
 egress_network_status="$(docker_resource_classification network "$egress_network")"
 
-container_ids="$(docker ps -aq --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME")"
-if [[ -z "$container_ids" ]]; then
-  container_status="ABSENT"
-else
-  container_status="PRESENT"
-fi
+container_status="$(compose_container_classification)"
+container_evidence="$(compose_container_evidence)"
 
-if [[ "$postgres_volume_status" == "ABSENT" && -z "$(postgres_container_id)" ]]; then
+if [[ "$postgres_volume_status" == "ABSENT" && "$container_status" == "ABSENT" ]]; then
   database_status="NOT_CREATED"
 else
   database_status="$(database_classification)"
@@ -77,14 +74,14 @@ printf '  prometheus volume (%s): %s\n' "$prometheus_volume" "$prometheus_volume
 printf '  grafana volume (%s): %s\n' "$grafana_volume" "$grafana_volume_status"
 printf '  private network (%s): %s\n' "$private_network" "$network_status"
 printf '  app egress network (%s): %s\n' "$egress_network" "$egress_network_status"
-printf '  project containers: %s\n' "$container_status"
+printf '  project containers: %s (%s)\n' "$container_status" "${container_evidence:-none}"
 printf '  database/schema evidence: %s\n' "$database_status"
 printf '  HTTP bind %s:%s: %s\n' "$APPLE333_HTTP_BIND" "$APPLE333_HTTP_PORT" "$port_status"
 
 unsafe=false
-for status in "$state_status" "$postgres_volume_status" "$redis_volume_status" "$minio_volume_status" "$prometheus_volume_status" "$grafana_volume_status" "$network_status" "$egress_network_status" "$database_status"; do
+for status in "$state_status" "$postgres_volume_status" "$redis_volume_status" "$minio_volume_status" "$prometheus_volume_status" "$grafana_volume_status" "$network_status" "$egress_network_status" "$container_status" "$database_status"; do
   case "$status" in
-    FOREIGN|OWNED_OTHER_APPLE333) unsafe=true ;;
+    FOREIGN|OWNED_OTHER_APPLE333|RECOVERY_REQUIRED) unsafe=true ;;
   esac
 done
 [[ "$port_status" == "OCCUPIED" ]] && unsafe=true
@@ -112,14 +109,31 @@ case "$assertion" in
   installable)
     [[ "$state_status" == "ABSENT" ]] || die "An Apple333 state marker already exists; use update.sh or investigate recovery instead of install.sh"
     [[ "$postgres_volume_status" == "ABSENT" && "$redis_volume_status" == "ABSENT" && "$minio_volume_status" == "ABSENT" && "$prometheus_volume_status" == "ABSENT" && "$grafana_volume_status" == "ABSENT" && "$network_status" == "ABSENT" && "$egress_network_status" == "ABSENT" ]] || die "Existing Docker resources are not a fresh verified Apple333 installation"
+    [[ "$container_status" == "ABSENT" ]] || die "Existing project containers are not a fresh verified Apple333 installation"
     [[ "$database_status" == "NOT_CREATED" || "$database_status" == "EMPTY" ]] || die "Target database/schema is not proven empty and dedicated to this installation"
+    [[ "$port_status" == "AVAILABLE" ]] || die "Configured HTTP port is occupied; choose a free port or reconfigure the reverse proxy"
+    ;;
+  pristine-after-start)
+    [[ "$state_status" == "ABSENT" ]] || die "Fresh installation must not inherit an Apple333 state marker"
+    for status in "$postgres_volume_status" "$redis_volume_status" "$minio_volume_status"; do
+      [[ "$status" == "OWNED_CURRENT" ]] || die "Fresh installation did not create a verified Apple333 data volume: $status"
+    done
+    [[ "$container_status" == "OWNED_CURRENT" ]] || die "Fresh installation containers are not verified as owned by this Apple333 deployment"
+    [[ -n "$(postgres_container_id)" ]] || die "Fresh installation PostgreSQL container is not uniquely verified"
+    [[ "$database_status" == "EMPTY" ]] || die "Fresh installation database/schema is not pristine: $database_status"
+    [[ "$network_status" == "OWNED_CURRENT" ]] || die "Fresh installation private network is not verified"
+    [[ "$egress_network_status" == "OWNED_CURRENT" || "$egress_network_status" == "ABSENT" ]] || die "Fresh installation egress network is not verified"
     [[ "$port_status" == "AVAILABLE" ]] || die "Configured HTTP port is occupied; choose a free port or reconfigure the reverse proxy"
     ;;
   owned)
     [[ "$state_status" == "OWNED_CURRENT" ]] || die "Deployment state is not owned by this Apple333 checkout/environment"
-    for status in "$postgres_volume_status" "$redis_volume_status" "$minio_volume_status" "$prometheus_volume_status" "$grafana_volume_status" "$network_status" "$egress_network_status"; do
+    for status in "$postgres_volume_status" "$redis_volume_status" "$minio_volume_status"; do
+      [[ "$status" == "OWNED_CURRENT" ]] || die "A required Apple333 data volume is missing or not owned by this deployment: $status. Stop and restore/investigate; update.sh will not initialize replacement data."
+    done
+    for status in "$prometheus_volume_status" "$grafana_volume_status" "$network_status" "$egress_network_status"; do
       [[ "$status" == "OWNED_CURRENT" || "$status" == "ABSENT" ]] || die "Docker resource ownership is not verified: $status"
     done
+    [[ "$container_status" == "OWNED_CURRENT" || "$container_status" == "ABSENT" ]] || die "Project container ownership is not verified: $container_status"
     case "$database_status" in
       OWNED_CURRENT|UNREACHABLE) ;;
       *) die "Database/schema ownership is not verified: $database_status" ;;
