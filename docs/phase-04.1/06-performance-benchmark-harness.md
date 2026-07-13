@@ -68,6 +68,11 @@ JSON)` runs for:
 - an import SKU conflict-validation lookup; and
 - ordered workflow history for a persisted product.
 
+After each scale, the harness refreshes PostgreSQL planner statistics only for
+its guarded benchmark tables, then runs each plan measurement serially. This
+avoids reporting cross-query resource contention as a single-request latency;
+it does not change application records or schema.
+
 For the four public HTTP endpoints, it also makes five bounded `GET` samples
 at each scale: listing, category-filtered listing, detail, and categories. It
 records p50/p95 end-to-end response time, status distribution, response byte
