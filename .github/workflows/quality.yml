@@ -101,6 +101,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      NODE_ENV: test
+      APPLE333_E2E_TEST_DB: "1"
       APP_NAME: Apple333
       APP_URL: http://localhost:3000
       AUTH_URL: http://localhost:3000
@@ -132,6 +134,11 @@ jobs:
           pnpm prisma:validate
           pnpm prisma:generate
 
+      - name: Apply reviewed schema and seed deterministic storefront E2E fixtures
+        run: |
+          pnpm exec prisma migrate deploy
+          node scripts/seed-e2e-storefront.mjs
+
       - name: Type-check
         run: pnpm typecheck
 
@@ -148,24 +155,49 @@ jobs:
         run: pnpm test:deploy
 
       - name: Check deployment shell syntax
-        run: bash -n deploy/bin/*.sh
+        run: bash -n deploy/*.sh deploy/bin/*.sh scripts/deploy.sh
+
+      - name: Check PM2 and standalone runtime configuration syntax
+        run: |
+          node --check ecosystem.config.js
+          node --check ecosystem.config.cjs
+          node --check scripts/prepare-standalone-runtime.mjs
+          node --check scripts/verify-production-database.mjs
 
       - name: Build application
         run: NODE_ENV=production pnpm build
 
+      - name: Verify standalone runtime artifact
+        run: |
+          pnpm prepare:standalone
+          test -f .next/standalone/server.js
+          test -d .next/standalone/.next/static
+
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run end-to-end smoke tests
-        run: pnpm test:e2e
+      - name: Run end-to-end smoke tests with sanitized server diagnostics
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p logs/e2e
+          set +e
+          pnpm test:e2e 2>&1 | node scripts/sanitize-e2e-log.mjs
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          if [[ "${statuses[0]}" -ne 0 ]]; then
+            exit "${statuses[0]}"
+          fi
+          exit "${statuses[1]}"
 
-      - name: Upload Playwright failure artifacts
-        if: failure()
+      - name: Upload Playwright E2E evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: playwright-failure-artifacts
+          name: playwright-e2e-evidence
           path: |
             playwright-report/
             test-results/
+            logs/e2e/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
