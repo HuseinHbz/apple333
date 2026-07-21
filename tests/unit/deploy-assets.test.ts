@@ -77,6 +77,19 @@ describe('deployment safety assets', () => {
     expect(nginx).toContain('proxy_set_header X-Forwarded-For $realip_remote_addr');
   });
 
+  it('selects only the reviewed Compose topology after parsing the environment identity', () => {
+    const library = readDeploy('bin/lib.sh');
+    const loadEnvironment = library.indexOf('load_environment()');
+    const loadEnvironmentFile = library.indexOf('  load_environment_file', loadEnvironment);
+    const selectorCall = library.indexOf('  select_compose_file', loadEnvironment);
+
+    expect(library).toContain('production) candidate="$DEPLOY_DIR/compose.production.yml" ;;');
+    expect(library).toContain('staging) candidate="$DEPLOY_DIR/compose.staging.yml" ;;');
+    expect(library).toContain('Unsupported managed deployment environment: $APPLE333_ENVIRONMENT');
+    expect(library).not.toContain('APPLE333_COMPOSE_FILE');
+    expect(selectorCall).toBeGreaterThan(loadEnvironmentFile);
+  });
+
   it('hard-blocks the Phase 04.1 PIM baseline before any deployment mutation', () => {
     const library = readDeploy('bin/lib.sh');
     const install = readDeploy('bin/install.sh');
@@ -147,6 +160,57 @@ describe('deployment safety assets', () => {
     expect(scripts).not.toMatch(/run_prisma\s+migrate\s+reset/);
     expect(scripts).not.toMatch(/^\s*docker\s+system\s+prune/m);
     expect(scripts).not.toMatch(/^\s*docker\s+compose.*\sdown\s+-v/m);
-    expect(workflow).toContain('bash -n deploy/bin/*.sh');
+    expect(workflow).toContain('bash -n deploy/*.sh deploy/bin/*.sh scripts/deploy.sh');
+  });
+
+  it('uses one standalone PM2 production runtime and a compatibility config shim', () => {
+    const ecosystem = readRoot('ecosystem.config.js');
+    const ecosystemCompatibility = readRoot('ecosystem.config.cjs');
+    const packageJson = readRoot('package.json');
+    const standalonePreparation = readRoot('scripts/prepare-standalone-runtime.mjs');
+
+    expect(ecosystem).toContain(".next', 'standalone', 'server.js'");
+    expect(ecosystem).toContain("HOSTNAME: '127.0.0.1'");
+    expect(ecosystem).toContain("NODE_ENV: 'production'");
+    expect(ecosystem).not.toContain('next/dist/bin/next');
+    expect(ecosystemCompatibility).toContain("require('./ecosystem.config.js')");
+    expect(packageJson).toContain('"start": "pnpm prepare:standalone && node .next/standalone/server.js"');
+    expect(standalonePreparation).toContain("join(standaloneNextDirectory, 'static')");
+    expect(standalonePreparation).toContain("join(standaloneDirectory, 'public')");
+  });
+
+  it('provides an isolated, non-secret PM2 update and rollback lane', () => {
+    const pm2Library = readDeploy('bin/bare-metal-lib.sh');
+    const environmentCheck = readDeploy('environment-check.sh');
+    const update = readDeploy('update.sh');
+    const install = readDeploy('install.sh');
+    const rollback = readDeploy('rollback.sh');
+    const healthCheck = readDeploy('health-check.sh');
+    const nginx = readDeploy('nginx.bare-metal.conf.template');
+    const envTemplate = readRoot('.env.production.example');
+    const compatibilityEntrypoint = readRoot('scripts/deploy.sh');
+    const scripts = [pm2Library, environmentCheck, update, install, rollback, healthCheck, compatibilityEntrypoint].join('\n');
+
+    expect(pm2Library).toContain('Only plain uppercase KEY=value lines are allowed');
+    expect(pm2Library).toContain('git -C "$APPLE333_REPO_ROOT" merge --ff-only');
+    expect(pm2Library).toContain('pnpm install --frozen-lockfile');
+    expect(pm2Library).toContain('pnpm exec prisma generate');
+    expect(pm2Library).toContain('verify-production-database.mjs');
+    expect(pm2Library).toContain('pm2 startOrReload');
+    expect(pm2Library).toContain('--env production --update-env');
+    expect(pm2Library).toContain('restore_application_snapshot');
+    expect(pm2Library).toContain('A managed Apple333 Docker Compose deployment is running');
+    expect(update).toContain('Phase 04.1 PIM migrations are production-blocked');
+    expect(rollback).toContain('--apply');
+    expect(healthCheck).toContain('verify_runtime_health');
+    expect(envTemplate).toContain('APPLE333_DEPLOY_BRANCH=');
+    expect(envTemplate).toContain('NODE_ENV=production');
+    expect(nginx).toContain('proxy_pass http://127.0.0.1:3000');
+    expect(nginx).toContain('proxy_set_header X-Forwarded-For');
+    expect(nginx).toContain('return 301 https://__APPLE333_CANONICAL_DOMAIN__$request_uri');
+    expect(scripts).not.toMatch(/^\s*source\s+[^\n]*\.env\.production/m);
+    expect(scripts).not.toMatch(/(?:pnpm\s+exec\s+)?prisma\s+(migrate\s+reset|db\s+push)/);
+    expect(scripts).not.toContain('pnpm exec prisma migrate deploy');
+    expect(scripts).not.toMatch(/git\s+reset/);
   });
 });

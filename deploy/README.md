@@ -1,9 +1,17 @@
 # Apple333 server deployment
 
-This directory is the only supported operational entry point for a managed
-Apple333 server. It contains a production Docker Compose stack, a non-secret
-environment template, and scripts for preflight, install, update, status, and
-uninstall.
+This directory is the supported operational entry point for Apple333 servers.
+It contains two deliberately separate deployment lanes:
+
+- `bin/` is the ownership-aware Docker Compose lane, with its own protected
+  `deploy/.env.production` file and resource-identity rules.
+- The root `install.sh`, `update.sh`, `rollback.sh`, `health-check.sh`, and
+  `environment-check.sh` scripts are the bare-metal PM2 lane used by the
+  current nginx-to-`127.0.0.1:3000` host.
+
+Choose exactly one lane per host and port. Never run the Docker `app` service
+and PM2 Apple333 process together. The PM2 lane reads the separate root
+`.env.production` file; it is not a fallback to the Docker configuration.
 
 Read [SAFETY-POLICY.md](SAFETY-POLICY.md) before running a mutating command.
 Every future project change must review this directory as required by
@@ -20,6 +28,11 @@ state-file edit can override the block. A later reviewed release must carry a
 release-specific approval and adoption procedure. See
 [RELEASE-GATES.md](RELEASE-GATES.md). The scripts never fall back to
 `prisma db push`, `migrate reset`, or an inferred schema.
+
+The bare-metal PM2 updater is therefore **code-only** in this release. It
+checks the protected database connection with `SELECT 1`, but it never calls
+`prisma migrate deploy`. A future reviewed release must add the specific
+production-adoption procedure before the migration gate can be lifted.
 
 ## What the scripts protect
 
@@ -50,6 +63,12 @@ delete anything automatically.
 | `monitoring/` | Private Prometheus scrape/alert rules and Grafana datasource provisioning |
 | `nginx.public-edge.conf.template` | Reviewed opt-in public TLS/redirect configuration template |
 | `systemd/` | Uninstalled, site-reviewed encrypted-backup service/timer templates |
+| `environment-check.sh` | Read-only bare-metal PM2 host, environment, capacity, port, and nginx validation |
+| `install.sh` | Bare-metal PM2 bootstrap from an already-cloned repository |
+| `update.sh` | Safe bare-metal code update with staged standalone build and automatic application-only rollback |
+| `rollback.sh` | Explicit application-only bare-metal rollback from a verified release snapshot |
+| `health-check.sh` | Loopback application, readiness, and database health verification |
+| `nginx.bare-metal.conf.template` | Host-reviewed TLS/reverse-proxy template for the PM2 lane |
 | `bin/preflight.sh` | Read-only ownership/dependency inspection |
 | `bin/install.sh` | Fresh installation after explicit `--apply` |
 | `bin/update.sh` | Safe release update with explicit migration decision |
@@ -75,6 +94,94 @@ This bundle manages its own labelled PostgreSQL container and rejects a
 `DATABASE_URL` that points to an external/shared database. That prevents the
 scripts from accidentally treating another application's database as Apple333.
 Use a separate, reviewed operational design for managed external databases.
+
+## Bare-metal PM2 deployment (current server)
+
+Use this lane when the server has host nginx and PM2, not Docker. It runs the
+Next.js standalone artifact directly with `node .next/standalone/server.js`.
+`next start` is not compatible with this project’s `output: 'standalone'`
+configuration and is never used by the PM2 scripts.
+
+### One-time host preparation
+
+1. Install a supported Linux Node.js runtime (Node `>=20.18.0`), Corepack/pnpm
+   `10.26.0`, Git, PM2, curl, nginx, and standard GNU utilities.
+2. Clone the reviewed repository into the intended server path (for example
+   `/var/www/apple333`), then create the protected root environment file:
+
+```bash
+cd /var/www/apple333
+cp .env.production.example .env.production
+chmod 600 .env.production
+# Edit every placeholder using the approved secret-management workflow.
+# Set APPLE333_DEPLOY_BRANCH=feature/deployment-production-fix (or another
+# reviewed remote branch) before the first deployment.
+```
+
+3. Configure nginx from `nginx.bare-metal.conf.template` through the host
+   change process. Do not overwrite another virtual host automatically. The
+   template provides HTTP-to-HTTPS and `www` redirects, loopback upstream
+   `127.0.0.1:3000`, and the required `Host`, `X-Forwarded-For`, and
+   `X-Forwarded-Proto` headers.
+4. Validate the host, then bootstrap the application:
+
+```bash
+./deploy/environment-check.sh
+./deploy/install.sh
+./deploy/health-check.sh
+```
+
+The scripts create non-secret release snapshots under
+`/var/backups/apple333`, preserve PM2 logs under `/var/log/apple333`, stage a
+new `.next` build before swapping it in, and use `pm2 startOrReload ... --env
+production --update-env`. They run `pm2 save` after a successful start. Enable
+boot persistence once for the deployment user, then save the process list:
+
+```bash
+pm2 startup systemd -u "$(id -un)" --hp "$HOME"
+pm2 save
+```
+
+Run the exact command below for later code-only releases. It checks clean
+tracked Git state, fetches only `APPLE333_DEPLOY_BRANCH`, advances it with a
+fast-forward merge, installs frozen dependencies, verifies Prisma generation
+and database reachability, builds standalone output, reloads PM2 in production,
+and verifies health/readiness. It never overwrites `.env.production`, resets
+the worktree, or changes the database.
+
+```bash
+cd /var/www/apple333
+./deploy/update.sh
+```
+
+If a post-build reload or health check fails, the updater automatically restores
+the prior application build and exact Git commit when a prior build exists. It
+never rolls back the database. An operator can inspect a snapshot first, then
+perform the same application-only action explicitly:
+
+```bash
+./deploy/rollback.sh
+./deploy/rollback.sh --apply --backup /var/backups/apple333/<snapshot>
+```
+
+### TLS with Certbot
+
+After nginx has a reviewed HTTP server block and DNS points to the host, install
+Certbot using the operating system’s approved package source. For a standard
+nginx host, issue the certificate only after reviewing the resulting virtual
+host change:
+
+```bash
+sudo certbot --nginx -d apple333.ir -d www.apple333.ir
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot renew --dry-run
+```
+
+Use the final domain names rather than the example names above. Certificate
+renewal ownership, expiry monitoring, and any nginx rollback remain host
+operator responsibilities; this repository does not write `/etc/nginx` or
+request certificates automatically.
 
 ## First installation
 

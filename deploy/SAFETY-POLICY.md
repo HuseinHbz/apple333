@@ -18,6 +18,31 @@
 - No foreign/ambiguous resource is reused, replaced, stopped, or deleted
   automatically.
 
+## Bare-metal PM2 lane
+
+- Bare-metal PM2 and the managed Docker Compose lane are mutually exclusive on
+  the same host/port. The PM2 scripts detect a running labelled Docker project
+  and stop rather than competing for `127.0.0.1:3000`.
+- PM2 reads only root `.env.production` through a strict plain `KEY=value`
+  parser. The file must be a regular file with no group/other read permission;
+  it is never shell-sourced, logged, copied into snapshots, or committed.
+- PM2 always uses `ecosystem.config.js` and the Next.js standalone runtime
+  `.next/standalone/server.js`. `next start` is not a production path for this
+  project.
+- A PM2 update refuses a dirty tracked Git worktree, fetches the configured
+  remote branch, and uses a fast-forward merge only. It never calls `git reset`,
+  discards local work, or overwrites the protected environment file.
+- Release snapshots contain commit/build/PM2-status and environment-key
+  metadata only. They contain neither raw environment values nor PM2 process
+  environments.
+- The PM2 updater performs no Prisma migration in the current release. It
+  verifies connectivity with read-only `SELECT 1`, then validates application
+  health. The immutable Phase 04.1 production migration block applies equally
+  to this lane.
+- A failed PM2 deployment may restore a previous application build and exact
+  commit. It never attempts database rollback, reset, `db push`, or schema
+  adoption.
+
 ## Ownership proof
 
 A resource is reusable only when all applicable evidence agrees:

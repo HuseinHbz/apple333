@@ -150,18 +150,37 @@ environment files are not configured by repository files alone. Follow
 production workflow. Production remains a manual, Environment-approved action;
 it must not be made push-triggered.
 
-## PM2 fallback only
+## Bare-metal PM2 lane
 
-[`ecosystem.config.js`](../../ecosystem.config.js) is a bare-metal PM2 fallback,
-not a second production deployment path. The canonical server design is the
-ownership-aware Docker Compose workflow in `deploy/`.
+The host-managed nginx + PM2 deployment is now a documented lane in
+[`deploy/`](../../deploy/README.md). It is separate from the ownership-aware
+Docker Compose workflow, not a replacement for its data-safety rules. Never
+run PM2 and the Docker `app` service on the same host/port.
 
-Do not run PM2 and the Docker `app` service on the same host/port. If an
-approved exception uses PM2, the operator must document a separate process
-manager, environment-file, log-rotation, monitoring, firewall, rollback, and
-port-isolation plan before starting it. PM2 is not covered by the managed
-install/update/uninstall scripts, and no PM2 runtime evidence is recorded for
-this phase.
+Use the root deployment scripts for a reviewed bare-metal host:
+
+```bash
+cd /var/www/apple333
+cp .env.production.example .env.production
+chmod 600 .env.production
+# Set all secrets and APPLE333_DEPLOY_BRANCH through the approved workflow.
+./deploy/environment-check.sh
+./deploy/install.sh
+./deploy/health-check.sh
+
+# Routine code-only release:
+./deploy/update.sh
+```
+
+PM2 runs [`ecosystem.config.js`](../../ecosystem.config.js), which starts the
+Next standalone server rather than `next start`. The deployment script copies
+static assets into the standalone artifact, loads the protected environment
+without shell-sourcing it, uses `pm2 startOrReload --env production
+--update-env`, saves PM2 state, and verifies loopback `/api/health` plus
+`/api/ready`. It stages a build before swapping `.next` and performs only an
+application/build rollback on failure. The Phase 04.1 PIM migration remains
+production-blocked; the PM2 lane does not run Prisma migrations or database
+rollback.
 
 ## Handoff checklist
 

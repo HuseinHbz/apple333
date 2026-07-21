@@ -9,7 +9,9 @@ readonly DEPLOY_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly DEPLOY_DIR="$(cd "$DEPLOY_BIN_DIR/.." && pwd -P)"
 readonly REPO_ROOT="$(cd "$DEPLOY_DIR/.." && pwd -P)"
 readonly ENV_FILE="${APPLE333_ENV_FILE:-$DEPLOY_DIR/.env.production}"
-readonly COMPOSE_FILE="$DEPLOY_DIR/compose.production.yml"
+# Selected only after the protected environment file is parsed and validated.
+# Never accept a Compose path from an environment variable or CLI argument.
+COMPOSE_FILE=""
 readonly PROJECT_KEY="apple333-enterprise-platform"
 readonly PIM_BASELINE_MIGRATION="20260713000000_phase_04_1_pim_activation"
 
@@ -70,9 +72,25 @@ APPLE333_PROJECT_ID]=1 [APPLE333_ENVIRONMENT]=1 [COMPOSE_PROJECT_NAME]=1
   done < "$ENV_FILE"
 }
 
+select_compose_file() {
+  local candidate
+
+  # This is a closed mapping owned by the deployment code. It deliberately
+  # rejects arbitrary environment names and Compose-file overrides so a staging
+  # invocation cannot accidentally reuse the production topology (or vice versa).
+  case "$APPLE333_ENVIRONMENT" in
+    production) candidate="$DEPLOY_DIR/compose.production.yml" ;;
+    staging) candidate="$DEPLOY_DIR/compose.staging.yml" ;;
+    *) die "Unsupported managed deployment environment: $APPLE333_ENVIRONMENT" ;;
+  esac
+
+  COMPOSE_FILE="$(canonical_path "$candidate")"
+  [[ "$COMPOSE_FILE" == "$DEPLOY_DIR/"* ]] || die "Managed Compose file must remain inside deploy/: $COMPOSE_FILE"
+  [[ -f "$COMPOSE_FILE" ]] || die "Missing deployment compose file: $COMPOSE_FILE"
+}
+
 load_environment() {
   [[ -f "$ENV_FILE" ]] || die "Missing production config: $ENV_FILE. Copy deploy/.env.production.example first."
-  [[ -f "$COMPOSE_FILE" ]] || die "Missing deployment compose file: $COMPOSE_FILE"
 
   # The file is operator-controlled and must not be writable by untrusted users.
   local mode
@@ -140,6 +158,7 @@ load_environment() {
   [[ "$REDIS_URL" == "redis://:$REDIS_PASSWORD@redis:6379"* ]] || die "REDIS_URL must target the authenticated managed redis service"
   [[ "$(canonical_path "$APPLE333_INSTALL_ROOT")" == "$REPO_ROOT" ]] || die "APPLE333_INSTALL_ROOT must resolve to this checkout: $REPO_ROOT"
   [[ "$REPO_ROOT" != "/" ]] || die "Refusing to operate from filesystem root"
+  select_compose_file
 
   export STATE_FILE="$APPLE333_STATE_DIR/${APPLE333_ENVIRONMENT}.state"
 }
