@@ -1,0 +1,49 @@
+name: apple333-inventory-test
+
+# Development/test-only PostgreSQL. Start it explicitly with:
+# docker compose --env-file .env.inventory-test -f docker-compose.inventory-test.yml up -d
+#
+# This is deliberately isolated from every development, staging, and production
+# Compose project. It is not included by the production deployment files.
+services:
+  postgres:
+    image: postgres:16.6-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${INVENTORY_TEST_POSTGRES_DB:?INVENTORY_TEST_POSTGRES_DB is required}
+      POSTGRES_USER: ${INVENTORY_TEST_POSTGRES_USER:?INVENTORY_TEST_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${INVENTORY_TEST_POSTGRES_PASSWORD:?INVENTORY_TEST_POSTGRES_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: --auth=scram-sha-256
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${INVENTORY_TEST_POSTGRES_BIND:?INVENTORY_TEST_POSTGRES_BIND is required}:${INVENTORY_TEST_POSTGRES_PORT:?INVENTORY_TEST_POSTGRES_PORT is required}:5432"
+    volumes:
+      - apple333_inventory_test_postgres_data:/var/lib/postgresql/data
+    networks:
+      - inventory_test
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: inventory-test
+      com.apple333.purpose: isolated-inventory-database
+
+networks:
+  inventory_test:
+    internal: true
+    name: apple333_inventory_test_network
+
+volumes:
+  apple333_inventory_test_postgres_data:
+    name: apple333_inventory_test_postgres_data
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: inventory-test
+      com.apple333.purpose: isolated-inventory-database

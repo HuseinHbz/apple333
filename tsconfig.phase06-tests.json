@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/database/inventory-persistence.test.ts",
+    "tests/e2e/phase-06-inventory.spec.ts",
+    "tests/integration/inventory-api.test.ts",
+    "tests/unit/inventory-availability.test.ts",
+    "tests/unit/inventory-rbac.test.ts",
+    "tests/unit/inventory-test-environment.test.ts",
+    "tests/unit/inventory-validators.test.ts"
+  ]
+}
