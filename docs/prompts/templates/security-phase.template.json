@@ -1,0 +1,137 @@
+{
+  "schema": "https://apple333.ir/schemas/enterprise-phase-prompt.schema.json",
+  "schemaVersion": "1.0",
+  "phase": {
+    "id": "phase-08-security-template",
+    "number": "08",
+    "name": "Security review template",
+    "category": "security"
+  },
+  "title": "Apple333 security phase",
+  "objective": "Assess or harden one approved security control with a documented threat model, least-privilege scope, and no production access.",
+  "scope": {
+    "inScope": [
+      "Review an approved authentication, authorization, validation, logging, secret-handling, or deployment control.",
+      "Add targeted local tests and security documentation."
+    ],
+    "outOfScope": [
+      "Production penetration testing or credential access.",
+      "Database mutation or user-data inspection.",
+      "Broad application feature redesign."
+    ],
+    "allowedPaths": [
+      "src/**",
+      "tests/**",
+      "docs/**",
+      "deploy/**"
+    ],
+    "forbiddenPaths": [
+      ".env*",
+      "prisma/migrations/**",
+      "public/uploads/**"
+    ]
+  },
+  "constraints": {
+    "productionAccess": false,
+    "databaseChanges": "none",
+    "destructiveOperations": false,
+    "secretsPolicy": "never-read-or-print",
+    "commitPolicy": "user-approved"
+  },
+  "architecture": {
+    "decisions": [
+      {
+        "title": "Fail closed and minimize disclosure",
+        "rationale": "Security controls should reject unsafe inputs, avoid exposing implementation details, and preserve auditability."
+      }
+    ],
+    "dependencies": [
+      "Threat model review",
+      "Security owner approval for policy changes"
+    ]
+  },
+  "implementation": {
+    "steps": [
+      {
+        "id": "MODEL_THREATS",
+        "description": "Record assets, trust boundaries, abuse cases, and expected controls for the approved scope.",
+        "expectedOutcome": "A concise threat model with explicit assumptions."
+      },
+      {
+        "id": "HARDEN_CONTROL",
+        "description": "Implement only the approved local control and test its failure modes.",
+        "expectedOutcome": "A narrowly scoped security improvement with regression coverage."
+      },
+      {
+        "id": "REVIEW_DISCLOSURE",
+        "description": "Verify errors, logs, and documentation do not disclose secrets or sensitive implementation detail.",
+        "expectedOutcome": "Evidence of safe observable behavior."
+      }
+    ],
+    "nonGoals": [
+      "Do not access live credentials or production user data.",
+      "Do not perform destructive or exploitative testing."
+    ]
+  },
+  "validation": {
+    "commands": [
+      {
+        "command": "pnpm typecheck",
+        "purpose": "Verify strict TypeScript compatibility.",
+        "required": true
+      },
+      {
+        "command": "pnpm lint",
+        "purpose": "Verify lint and security-oriented code conventions.",
+        "required": true
+      },
+      {
+        "command": "pnpm test",
+        "purpose": "Run targeted regression tests.",
+        "required": true
+      }
+    ],
+    "manualChecks": [
+      "Review threat model assumptions and residual risk with the security owner.",
+      "Confirm all logs and documentation avoid secret values."
+    ],
+    "prohibitedCommands": [
+      "prisma db push",
+      "prisma migrate reset",
+      "git reset --hard"
+    ]
+  },
+  "deliverables": [
+    {
+      "path": "docs/phases/<phase>/security-review.md",
+      "kind": "report",
+      "description": "Captures threats, controls, validation evidence, and residual risks."
+    }
+  ],
+  "risks": [
+    {
+      "severity": "high",
+      "description": "A security change can break authentication, authorization, or operational visibility if its failure modes are not tested.",
+      "mitigation": "Use fail-closed behavior, focused regression tests, and security-owner review before release."
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-01",
+      "statement": "The approved security control is documented, tested, and fails safely."
+    },
+    {
+      "id": "AC-02",
+      "statement": "No production access, credential handling, destructive action, or database change occurs."
+    }
+  ],
+  "execution": {
+    "branch": "fix/security-phase",
+    "workMode": "audit",
+    "requiresHumanApproval": true,
+    "stopConditions": [
+      "Stop if validation requires a live credential, production target, or unapproved data access.",
+      "Stop if remediation exceeds the documented security scope."
+    ]
+  }
+}

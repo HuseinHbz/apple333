@@ -1,0 +1,405 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apple333.ir/schemas/enterprise-phase-prompt.schema.json",
+  "title": "Apple333 Enterprise Phase Prompt",
+  "description": "Offline, reviewable instruction contract for one Apple333 delivery phase.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "phase",
+    "title",
+    "objective",
+    "scope",
+    "constraints",
+    "architecture",
+    "implementation",
+    "validation",
+    "deliverables",
+    "risks",
+    "acceptanceCriteria",
+    "execution"
+  ],
+  "properties": {
+    "schema": {
+      "const": "https://apple333.ir/schemas/enterprise-phase-prompt.schema.json"
+    },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "phase": {
+      "$ref": "#/$defs/phase"
+    },
+    "title": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "objective": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inScope",
+        "outOfScope",
+        "allowedPaths",
+        "forbiddenPaths"
+      ],
+      "properties": {
+        "inScope": {
+          "$ref": "#/$defs/stringList"
+        },
+        "outOfScope": {
+          "$ref": "#/$defs/stringList"
+        },
+        "allowedPaths": {
+          "$ref": "#/$defs/pathList"
+        },
+        "forbiddenPaths": {
+          "$ref": "#/$defs/pathList"
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productionAccess",
+        "databaseChanges",
+        "destructiveOperations",
+        "secretsPolicy",
+        "commitPolicy"
+      ],
+      "properties": {
+        "productionAccess": {
+          "type": "boolean"
+        },
+        "databaseChanges": {
+          "enum": [
+            "none",
+            "plan-only",
+            "reviewed-migration"
+          ]
+        },
+        "destructiveOperations": {
+          "const": false
+        },
+        "secretsPolicy": {
+          "enum": [
+            "never-read-or-print",
+            "approved-secret-manager-only"
+          ]
+        },
+        "commitPolicy": {
+          "enum": [
+            "no-commit",
+            "small-commits",
+            "user-approved"
+          ]
+        }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decisions",
+        "dependencies"
+      ],
+      "properties": {
+        "decisions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/decision"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "nonGoals"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/implementationStep"
+          }
+        },
+        "nonGoals": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commands",
+        "manualChecks",
+        "prohibitedCommands"
+      ],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/validationCommand"
+          }
+        },
+        "manualChecks": {
+          "$ref": "#/$defs/stringList"
+        },
+        "prohibitedCommands": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "deliverables": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/deliverable"
+      }
+    },
+    "risks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/risk"
+      }
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/acceptanceCriterion"
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "branch",
+        "workMode",
+        "requiresHumanApproval",
+        "stopConditions"
+      ],
+      "properties": {
+        "branch": {
+          "type": "string",
+          "pattern": "^(feature|fix|chore|docs)/[a-z0-9][a-z0-9._-]*$"
+        },
+        "workMode": {
+          "enum": [
+            "audit",
+            "documentation",
+            "implementation",
+            "stabilization"
+          ]
+        },
+        "requiresHumanApproval": {
+          "const": true
+        },
+        "stopConditions": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      },
+      "uniqueItems": true
+    },
+    "pathList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+"
+      },
+      "uniqueItems": true
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "number",
+        "name",
+        "category"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^phase-[0-9]{2}(?:\\.[0-9]+)?-[a-z0-9-]+$"
+        },
+        "number": {
+          "type": "string",
+          "pattern": "^[0-9]{2}(?:\\.[0-9]+)?$"
+        },
+        "name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "category": {
+          "enum": [
+            "application",
+            "database",
+            "infrastructure",
+            "security"
+          ]
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "rationale"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "rationale": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "implementationStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "description",
+        "expectedOutcome"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_-]*$"
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "expectedOutcome": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "validationCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "purpose",
+        "required"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "deliverable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "description"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+"
+        },
+        "kind": {
+          "enum": [
+            "documentation",
+            "source",
+            "test",
+            "configuration",
+            "report"
+          ]
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "description",
+        "mitigation"
+      ],
+      "properties": {
+        "severity": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "description": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "mitigation": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "statement"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AC-[0-9]{2,}$"
+        },
+        "statement": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    }
+  }
+}
