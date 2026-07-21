@@ -4,6 +4,7 @@ __pycache__/
 .env
 .env.local
 .env.pim-test
+.env.inventory-test
 .env.production
 .env.staging
 *.pem
@@ -12,6 +13,7 @@ credentials/
 node_modules/
 .pnpm-store/
 .next/
+.prompt-validator/
 *.tsbuildinfo
 playwright-report/
 test-results/
