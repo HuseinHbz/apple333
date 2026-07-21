@@ -1278,20 +1278,23 @@ export async function deleteAdminProductVariant(productId: string, variantId: st
   await prisma.$transaction(async (transaction) => {
     const variant = await pimRepository.findVariant(productId, variantId, transaction);
     if (!variant || variant.deletedAt) throw new NotFoundError();
-    const [inventoryCount, cartCount] = await Promise.all([
+    const skuId = variant.skuRecord?.id;
+    const [inventoryCount, cartCount, inventoryItemCount, movementCount, deviceUnitCount, reservationCount] = await Promise.all([
       transaction.branchInventory.count({ where: { variantId } }),
       transaction.storefrontCartItem.count({ where: { variantId } }),
+      skuId ? transaction.inventoryItem.count({ where: { skuId } }) : Promise.resolve(0),
+      skuId ? transaction.stockMovement.count({ where: { skuId } }) : Promise.resolve(0),
+      skuId ? transaction.deviceUnit.count({ where: { skuId } }) : Promise.resolve(0),
+      skuId ? transaction.inventoryReservation.count({ where: { inventoryItem: { skuId } } }) : Promise.resolve(0),
     ]);
-    if (inventoryCount > 0 || cartCount > 0) {
-      await transaction.catalogVariant.update({ where: { id: variantId }, data: { isActive: false, deletedAt: new Date(), version: { increment: 1 } } });
-      if (variant.skuRecord) await transaction.productSku.update({ where: { variantId }, data: { status: 'DISCONTINUED', deletedAt: new Date(), version: { increment: 1 } } });
-    } else {
-      await transaction.catalogVariant.update({ where: { id: variantId }, data: { isActive: false, deletedAt: new Date(), version: { increment: 1 } } });
-      if (variant.skuRecord) await transaction.productSku.update({ where: { variantId }, data: { status: 'DISCONTINUED', deletedAt: new Date(), version: { increment: 1 } } });
+    if (inventoryCount > 0 || cartCount > 0 || inventoryItemCount > 0 || movementCount > 0 || deviceUnitCount > 0 || reservationCount > 0) {
+      throw new ConflictError();
     }
+    await transaction.catalogVariant.update({ where: { id: variantId }, data: { isActive: false, deletedAt: new Date(), version: { increment: 1 } } });
+    if (variant.skuRecord) await transaction.productSku.update({ where: { variantId }, data: { status: 'DISCONTINUED', deletedAt: new Date(), version: { increment: 1 } } });
     await transaction.catalogProduct.update({ where: { id: productId }, data: { version: { increment: 1 } } });
     await auditLogRepository.create(auditInput(audit, {
-      action: 'pim.product-variant.archived', entityType: 'CatalogVariant', entityId: variantId, metadata: { productId, inventoryCount, cartCount },
+      action: 'pim.product-variant.archived', entityType: 'CatalogVariant', entityId: variantId, metadata: { productId, inventoryCount, cartCount, inventoryItemCount, movementCount, deviceUnitCount, reservationCount },
     }), transaction);
   });
 }

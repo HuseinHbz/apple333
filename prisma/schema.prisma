@@ -122,6 +122,68 @@ enum BranchKind {
   CENTRAL_STOCK
 }
 
+enum BranchStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+}
+
+enum WarehouseStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+}
+
+enum InventoryLocationStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+}
+
+enum InventoryLocationType {
+  RECEIVING
+  STORAGE
+  PICKUP
+  QUARANTINE
+  DAMAGED
+}
+
+enum StockMovementType {
+  PURCHASE
+  TRANSFER
+  ADJUSTMENT
+  RETURN
+  SALE_RESERVED
+}
+
+enum InventoryAdjustmentDirection {
+  INCREASE
+  DECREASE
+}
+
+enum DeviceUnitStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  RETURNED
+  DAMAGED
+}
+
+enum InventoryReservationStatus {
+  ACTIVE
+  RELEASED
+  EXPIRED
+  CANCELLED
+  FULFILLED
+}
+
+enum InventoryTrackingMode {
+  NONE
+  SERIAL
+  IMEI
+  SERIAL_AND_IMEI
+}
+
 enum StorefrontCartStatus {
   ACTIVE
   ABANDONED
@@ -151,6 +213,8 @@ model User {
   approvedProducts CatalogProduct[]       @relation("ProductApprovedBy")
   productWorkflowEvents ProductWorkflowEvent[] @relation("ProductWorkflowActor")
   productImportBatches ProductImportBatch[] @relation("ProductImportRequestedBy")
+  inventoryMovements   StockMovement[]         @relation("StockMovementActor")
+  inventoryReservations InventoryReservation[]  @relation("InventoryReservationCreator")
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
@@ -524,6 +588,10 @@ model ProductSku {
   version             Int              @default(1)
   deletedAt           DateTime?
   variant             CatalogVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  inventoryPolicy     InventorySkuPolicy?
+  inventoryItems      InventoryItem[]
+  stockMovements      StockMovement[]
+  deviceUnits         DeviceUnit[]
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
@@ -748,16 +816,19 @@ model Branch {
   code        String            @unique
   name        String
   kind        BranchKind        @default(STORE)
+  status      BranchStatus      @default(ACTIVE)
   city        String?
   address     String?
   phone       String?
   isActive    Boolean           @default(true)
   isPickupEnabled Boolean        @default(true)
   inventory   BranchInventory[]
+  warehouses  Warehouse[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
   @@index([isActive, kind])
+  @@index([status, kind])
 }
 
 model BranchInventory {
@@ -771,6 +842,134 @@ model BranchInventory {
 
   @@id([branchId, variantId])
   @@index([variantId])
+}
+
+model Warehouse {
+  id        String          @id @default(cuid())
+  branchId  String
+  code      String
+  name      String
+  status    WarehouseStatus @default(ACTIVE)
+  branch    Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  locations InventoryLocation[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([branchId, code])
+  @@index([branchId, status])
+}
+
+model InventoryLocation {
+  id                String                  @id @default(cuid())
+  warehouseId       String
+  code              String
+  name              String
+  type              InventoryLocationType
+  status            InventoryLocationStatus @default(ACTIVE)
+  warehouse         Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  inventoryItems    InventoryItem[]         @relation("InventoryItemLocation")
+  outgoingMovements StockMovement[]         @relation("StockMovementFromLocation")
+  incomingMovements StockMovement[]         @relation("StockMovementToLocation")
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([warehouseId, code])
+  @@unique([id, warehouseId])
+  @@index([warehouseId, status, type])
+}
+
+model InventorySkuPolicy {
+  id           String                @id @default(cuid())
+  skuId        String                @unique
+  trackingMode InventoryTrackingMode @default(NONE)
+  sku          ProductSku            @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+}
+
+model InventoryItem {
+  id                String               @id @default(cuid())
+  warehouseId       String
+  locationId        String
+  skuId             String
+  quantity          Int                  @default(0)
+  reservedQuantity  Int                  @default(0)
+  availableQuantity Int                  @default(0)
+  version           Int                  @default(1)
+  location          InventoryLocation    @relation("InventoryItemLocation", fields: [locationId, warehouseId], references: [id, warehouseId], onDelete: Restrict)
+  sku               ProductSku           @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  deviceUnits       DeviceUnit[]
+  reservations      InventoryReservation[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([locationId, skuId])
+  @@index([warehouseId, skuId])
+  @@index([skuId, availableQuantity])
+}
+
+model StockMovement {
+  id                  String                       @id @default(cuid())
+  skuId               String
+  fromLocationId      String?
+  toLocationId        String?
+  quantity            Int
+  type                StockMovementType
+  adjustmentDirection InventoryAdjustmentDirection?
+  reference           String?
+  idempotencyKey      String                       @unique
+  performedById       String?
+  metadata            Json?
+  sku                 ProductSku                   @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  fromLocation        InventoryLocation?           @relation("StockMovementFromLocation", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation          InventoryLocation?           @relation("StockMovementToLocation", fields: [toLocationId], references: [id], onDelete: Restrict)
+  performedBy         User?                        @relation("StockMovementActor", fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime                     @default(now())
+
+  @@index([skuId, createdAt])
+  @@index([fromLocationId, createdAt])
+  @@index([toLocationId, createdAt])
+  @@index([reference, createdAt])
+}
+
+model DeviceUnit {
+  id                String           @id @default(cuid())
+  skuId             String
+  inventoryItemId   String?
+  reservationId     String?
+  imei              String?          @unique
+  serialNumber      String?          @unique
+  status            DeviceUnitStatus @default(AVAILABLE)
+  warrantyExpiresAt DateTime?
+  metadata          Json?
+  sku               ProductSku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  inventoryItem     InventoryItem?   @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  reservation       InventoryReservation? @relation("InventoryReservationDeviceUnits", fields: [reservationId], references: [id], onDelete: Restrict)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([skuId, status])
+  @@index([inventoryItemId, status])
+  @@index([reservationId, status])
+}
+
+model InventoryReservation {
+  id             String                     @id @default(cuid())
+  inventoryItemId String
+  quantity       Int
+  status         InventoryReservationStatus @default(ACTIVE)
+  expiresAt      DateTime?
+  reference      String?
+  idempotencyKey String                     @unique
+  createdById    String?
+  inventoryItem  InventoryItem              @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  createdBy      User?                      @relation("InventoryReservationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  deviceUnits    DeviceUnit[]               @relation("InventoryReservationDeviceUnits")
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@index([inventoryItemId, status, expiresAt])
+  @@index([reference, status])
 }
 
 model StorefrontCart {

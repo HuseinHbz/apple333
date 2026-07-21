@@ -12,6 +12,10 @@ afterEach(() => {
 });
 
 describe('Playwright CI evidence configuration', () => {
+  // On Windows a full parallel Vitest run can spend several seconds compiling
+  // Playwright's dependency graph before this module-level assertion begins.
+  // Keep the assertion enabled and bounded rather than creating a flaky false
+  // negative under concurrent test startup.
   it('retains failure media, a portable report, and server output for sanitization', async () => {
     const config = await loadCiConfig();
 
@@ -31,5 +35,5 @@ describe('Playwright CI evidence configuration', () => {
       stdout: 'pipe',
       stderr: 'pipe',
     });
-  });
+  }, 15_000);
 });

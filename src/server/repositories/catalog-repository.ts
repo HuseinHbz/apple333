@@ -32,6 +32,7 @@ const publicInventorySelect = {
       name: true,
       city: true,
       isActive: true,
+      status: true,
       isPickupEnabled: true,
     },
   },
@@ -126,6 +127,16 @@ export type PublicVariantRecord = Prisma.CatalogVariantGetPayload<{
   select: typeof publicVariantSelect;
 }>;
 
+const publicSitemapSelect = {
+  slug: true,
+  updatedAt: true,
+  seo: { select: { noIndex: true } },
+} satisfies Prisma.CatalogProductSelect;
+
+export type PublicSitemapRecord = Prisma.CatalogProductGetPayload<{
+  select: typeof publicSitemapSelect;
+}>;
+
 function productOrder(sort: CatalogPageQuery['sort']): Prisma.CatalogProductOrderByWithRelationInput[] {
   if (sort === 'newest') return [{ publishedAt: 'desc' }, { name: 'asc' }];
   if (sort === 'name') return [{ name: 'asc' }];
@@ -144,7 +155,7 @@ function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput 
       ? {
         inventory: {
           some: {
-            branch: { is: { isActive: true } },
+            branch: { is: { isActive: true, status: 'ACTIVE' } },
             onHand: { gt: prisma.branchInventory.fields.reserved },
           },
         },
@@ -161,6 +172,7 @@ function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput 
         : query.collection === 'new'
           ? { isNew: true }
           : { isOnSale: true }),
+    ...(query.brand === undefined ? {} : { brand: { equals: query.brand, mode: 'insensitive' } }),
     ...(query.category === undefined ? {} : { category: { is: { slug: query.category, isActive: true, deletedAt: null } } }),
     ...(query.query === undefined ? {} : {
       OR: [
@@ -170,6 +182,17 @@ function productWhere(query: CatalogPageQuery): Prisma.CatalogProductWhereInput 
         { slug: { contains: query.query, mode: 'insensitive' } },
       ],
     }),
+    ...(query.model === undefined
+      ? {}
+      : {
+        AND: [{
+          OR: [
+            { name: { contains: query.model, mode: 'insensitive' } },
+            { slug: { contains: query.model, mode: 'insensitive' } },
+            { variants: { some: { ...publicVariantWhere, modelNumber: { contains: query.model, mode: 'insensitive' } } } },
+          ],
+        }],
+      }),
     variants: { some: variantCriteria },
   };
 }
@@ -209,6 +232,16 @@ export const catalogRepository = {
     return prisma.catalogProduct.findMany({
       where: { slug: { in: [...slugs] }, ...publicProductWithSellableVariantWhere },
       select: publicProductSelect,
+    });
+  },
+
+  findPublicSitemapEntries({ skip, take }: Readonly<{ skip: number; take: number }>): Promise<PublicSitemapRecord[]> {
+    return prisma.catalogProduct.findMany({
+      where: publicProductWithSellableVariantWhere,
+      orderBy: [{ updatedAt: 'desc' }, { slug: 'asc' }],
+      skip,
+      take,
+      select: publicSitemapSelect,
     });
   },
 

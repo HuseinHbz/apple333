@@ -12,6 +12,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { WishlistButton } from '@/features/storefront/components/wishlist-button';
 import type { PublicProductDto, StorefrontCartDto } from '@/modules/catalog/types';
 import { useStorefrontCart } from '@/modules/cart/store';
 import { StoreApiError, storeApi } from '@/lib/store-api';
@@ -19,20 +20,31 @@ import { StoreApiError, storeApi } from '@/lib/store-api';
 import { formatRials, productVariantLabel } from './store-utils';
 import type { PublicProductPageDto } from './store-types';
 
-export function ProductDetail({ slug }: { slug: string }) {
+export function ProductDetail({
+  slug,
+  initialProduct,
+  initialRelatedProducts,
+}: {
+  slug: string;
+  initialProduct?: PublicProductDto;
+  initialRelatedProducts?: PublicProductPageDto | null;
+}) {
   const product = useQuery({
     queryKey: ['storefront-product', slug],
     queryFn: () => storeApi<PublicProductDto>(`/api/store/products/${encodeURIComponent(slug)}`),
+    initialData: initialProduct,
   });
 
   if (product.isLoading) return <StoreLoadingState label="در حال دریافت اطلاعات محصول…" />;
   if (product.isError) return <StoreErrorState message="این محصول منتشر نشده، وجود ندارد یا سرویس کاتالوگ در دسترس نیست." />;
   if (!product.data) return <StoreErrorState />;
 
-  return <ProductDetailContent product={product.data} />;
+  return initialRelatedProducts === undefined
+    ? <ProductDetailContent product={product.data} />
+    : <ProductDetailContent product={product.data} initialRelatedProducts={initialRelatedProducts} />;
 }
 
-function ProductDetailContent({ product }: { product: PublicProductDto }) {
+function ProductDetailContent({ product, initialRelatedProducts }: { product: PublicProductDto; initialRelatedProducts?: PublicProductPageDto | null }) {
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(product.variants[0]?.id ?? null);
   const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId) ?? product.variants[0] ?? null;
   const setCart = useStorefrontCart((state) => state.setCart);
@@ -48,11 +60,12 @@ function ProductDetailContent({ product }: { product: PublicProductDto }) {
     queryKey: ['storefront-related-products', product.slug, product.category?.slug],
     queryFn: () => storeApi<PublicProductPageDto>(`/api/store/products?category=${encodeURIComponent(product.category?.slug ?? '')}&page=1&pageSize=4&sort=featured`),
     enabled: Boolean(product.category?.slug),
+    initialData: initialRelatedProducts ?? undefined,
   });
   const related = relatedProducts.data?.items.filter((item) => item.slug !== product.slug) ?? [];
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main id="storefront-content" className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] lg:items-start">
         <ProductGallery product={product} />
         <section>
@@ -88,7 +101,7 @@ function ProductDetailContent({ product }: { product: PublicProductDto }) {
                     </div>
                     <Badge tone={selectedVariant.availability === 'IN_STOCK' ? 'success' : 'neutral'}>{selectedVariant.availability === 'IN_STOCK' ? 'موجود در شعب منتخب' : 'فعلاً ناموجود'}</Badge>
                   </div>
-                  <Button size="lg" className="mt-5 w-full" disabled={selectedVariant.availability !== 'IN_STOCK' || addToCart.isPending} onClick={() => addToCart.mutate(selectedVariant.id)}>
+                  <Button data-testid="storefront-add-to-cart" size="lg" className="mt-5 w-full" disabled={selectedVariant.availability !== 'IN_STOCK' || addToCart.isPending} onClick={() => addToCart.mutate(selectedVariant.id)}>
                     <ShoppingBag className="size-4" aria-hidden="true" />
                     {addToCart.isPending ? 'در حال افزودن…' : 'افزودن به سبد'}
                   </Button>
@@ -99,7 +112,8 @@ function ProductDetailContent({ product }: { product: PublicProductDto }) {
             </CardContent>
           </Card>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <WishlistButton productSlug={product.slug} className="w-full" />
             <Link href={`/compare?slugs=${encodeURIComponent(product.slug)}`} className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-bold transition hover:border-zinc-950"><Scale className="size-5 text-zinc-600" aria-hidden="true" /> مقایسه این مدل</Link>
             <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-sm font-bold text-zinc-500"><HeartHandshake className="size-5" aria-hidden="true" /> طرح تعویض در فاز بعدی فعال می‌شود</div>
           </div>
@@ -118,7 +132,7 @@ function ProductDetailContent({ product }: { product: PublicProductDto }) {
           <Card className="rounded-3xl shadow-none">
             <CardHeader><CardTitle>موجودی شعب</CardTitle></CardHeader>
             <CardContent>
-              {selectedVariant?.branches.length ? <ul className="space-y-3">{selectedVariant.branches.map((branch) => <li key={branch.id} className="flex items-start justify-between gap-3 text-sm"><span className="flex gap-2 font-semibold"><Store className="mt-0.5 size-4 text-zinc-500" aria-hidden="true" />{branch.name}{branch.city ? `، ${branch.city}` : ''}</span><span className="text-zinc-500">{branch.available > 0 ? `${branch.available} قابل‌تحویل` : 'ناموجود'}</span></li>)}</ul> : <p className="text-sm leading-6 text-zinc-500">موجودی قابل‌تحویل برای مدل انتخاب‌شده ثبت نشده است.</p>}
+              {selectedVariant?.branches.length ? <ul data-testid="storefront-branch-availability" className="space-y-3">{selectedVariant.branches.map((branch) => <li key={branch.id} data-testid={`storefront-branch-${branch.id}`} className="flex items-start justify-between gap-3 text-sm"><span className="flex gap-2 font-semibold"><Store className="mt-0.5 size-4 text-zinc-500" aria-hidden="true" />{branch.name}{branch.city ? `، ${branch.city}` : ''}</span><span className="text-zinc-500">{branch.availability === 'AVAILABLE' ? 'موجود' : branch.availability === 'LIMITED' ? 'محدود' : 'ناموجود'}</span></li>)}</ul> : <p className="text-sm leading-6 text-zinc-500">موجودی قابل‌تحویل برای مدل انتخاب‌شده ثبت نشده است.</p>}
             </CardContent>
           </Card>
           <Alert tone="info" title="خرید اقساطی و پرداخت">محاسبه اقساط، پرداخت و صدور سفارش در فاز ۴ مدیریت سفارش و پرداخت فعال می‌شود. در این مرحله فقط سبد و پیش‌نمایش خرید آماده است.</Alert>
@@ -142,7 +156,7 @@ function ProductDetailContent({ product }: { product: PublicProductDto }) {
       </section>
 
       {product.category ? <section className="mt-10">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[0.18em] text-zinc-500">RELATED</p><h2 className="mt-2 text-2xl font-black">محصولات مرتبط</h2></div><Link href={`/products?category=${encodeURIComponent(product.category.slug)}`} className="text-sm font-bold text-zinc-700 underline-offset-4 hover:underline">مشاهدهٔ همه</Link></div>
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold tracking-[0.18em] text-zinc-600">RELATED</p><h2 className="mt-2 text-2xl font-black">محصولات مرتبط</h2></div><Link href={`/products?category=${encodeURIComponent(product.category.slug)}`} className="text-sm font-bold text-zinc-700 underline-offset-4 hover:underline">مشاهدهٔ همه</Link></div>
         <div className="mt-6">
           {relatedProducts.isLoading ? <StoreLoadingState label="در حال دریافت محصولات مرتبط…" /> : null}
           {relatedProducts.isError ? <p className="text-sm text-zinc-500">محصولات مرتبط در حال حاضر در دسترس نیستند.</p> : null}

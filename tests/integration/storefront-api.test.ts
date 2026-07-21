@@ -97,6 +97,17 @@ describe('storefront public API routes', () => {
     expect(mocks.listPublicProducts).not.toHaveBeenCalled();
   });
 
+  it('passes bounded brand and model filters through the public catalog contract', async () => {
+    const response = await productsGet(request('/api/store/products?brand=Apple&model=iPhone%2016&sort=newest'));
+
+    expect(response.status).toBe(200);
+    expect(mocks.listPublicProducts).toHaveBeenCalledWith(expect.objectContaining({
+      brand: 'Apple',
+      model: 'iPhone 16',
+      sort: 'newest',
+    }));
+  });
+
   it('uses the validated route parameter for a product response', async () => {
     const response = await productGet(request('/api/store/products/iphone-16-pro'), {
       params: Promise.resolve({ slug: 'iphone-16-pro' }),

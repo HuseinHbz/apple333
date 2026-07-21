@@ -28,7 +28,13 @@ export interface AdminNavigationGroup {
   items: readonly AdminNavigationItem[];
 }
 
-const implementedRouteOverrides = new Set(['/admin/products']);
+const implementedRouteOverrides = new Set([
+  '/admin/products',
+  '/admin/inventory',
+  '/admin/branches',
+  '/admin/warehouses',
+  '/admin/imei',
+]);
 
 export const adminNavigation: readonly AdminNavigationGroup[] = [
   {
@@ -51,6 +57,9 @@ export const adminNavigation: readonly AdminNavigationGroup[] = [
     items: [
       { id: 'products', label: 'محصولات', href: '/admin/products', icon: 'package', permission: 'products.read', availability: 'planned' },
       { id: 'inventory', label: 'موجودی', href: '/admin/inventory', icon: 'boxes', permission: 'inventory.read', availability: 'planned' },
+      { id: 'branches', label: 'شعب', href: '/admin/branches', icon: 'boxes', permission: 'branches.read', availability: 'planned' },
+      { id: 'warehouses', label: 'انبارها', href: '/admin/warehouses', icon: 'boxes', permission: 'warehouses.read', availability: 'planned' },
+      { id: 'imei', label: 'IMEI و سریال', href: '/admin/imei', icon: 'shield', permission: 'devices.read', availability: 'planned' },
       { id: 'orders', label: 'سفارش‌ها', href: '/admin/orders', icon: 'orders', permission: 'orders.read', availability: 'planned' },
       { id: 'finance', label: 'مالی', href: '/admin/finance', icon: 'finance', permission: 'finance.read', availability: 'planned' },
       { id: 'crm', label: 'مشتریان', href: '/admin/crm', icon: 'crm', permission: 'crm.read', availability: 'planned' },
