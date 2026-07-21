@@ -20,18 +20,25 @@ function uniqueSlugs(slugs: readonly string[]): string[] {
   return [...new Set(slugs.map((slug) => slug.trim()).filter(Boolean))].slice(0, 4);
 }
 
-export function CompareWorkbench({ initialSlugs }: { initialSlugs: readonly string[] }) {
+export function CompareWorkbench({
+  initialSlugs,
+  initialComparison,
+}: {
+  initialSlugs: readonly string[];
+  initialComparison?: PublicProductComparisonDto;
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>(() => uniqueSlugs(initialSlugs));
   const catalog = useQuery({
     queryKey: ['storefront-products', 'compare-picker'],
     queryFn: () => storeApi<PublicProductPageDto>('/api/store/products?page=1&pageSize=24&sort=featured'),
   });
-  const comparePath = selected.length ? `/api/store/products/compare?slugs=${encodeURIComponent(selected.join(','))}` : null;
+  const comparePath = selected.length >= 2 ? `/api/store/products/compare?slugs=${encodeURIComponent(selected.join(','))}` : null;
   const compared = useQuery({
     queryKey: ['storefront-compare', selected],
     queryFn: () => storeApi<PublicProductComparisonDto>(comparePath ?? '/api/store/products/compare'),
     enabled: comparePath !== null,
+    initialData: selected.join(',') === uniqueSlugs(initialSlugs).join(',') ? initialComparison : undefined,
   });
 
   const specifications = useMemo(() => {
@@ -45,13 +52,14 @@ export function CompareWorkbench({ initialSlugs }: { initialSlugs: readonly stri
   }
 
   function applyComparison() {
+    if (selected.length < 2) return;
     router.replace(selected.length ? `/compare?slugs=${encodeURIComponent(selected.join(','))}` : '/compare');
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main id="storefront-content" className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="max-w-2xl">
-        <p className="text-xs font-bold tracking-[0.18em] text-zinc-500">COMPARE</p>
+        <p className="text-xs font-bold tracking-[0.18em] text-zinc-600">COMPARE</p>
         <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">مقایسه محصولات</h1>
         <p className="mt-3 text-sm leading-7 text-zinc-600">حداکثر چهار محصول را برای مقایسه قیمت، مدل‌های موجود و مشخصات انتخاب کنید.</p>
       </div>
@@ -59,7 +67,7 @@ export function CompareWorkbench({ initialSlugs }: { initialSlugs: readonly stri
       <section className="mt-8 rounded-3xl border border-zinc-200 bg-white p-5 sm:p-6" aria-label="انتخاب محصولات برای مقایسه">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div><h2 className="font-bold">انتخاب محصول</h2><p className="mt-1 text-sm text-zinc-500">{selected.length} از ۴ محصول انتخاب شده است.</p></div>
-          <Button onClick={applyComparison} disabled={selected.length === 0}><Scale className="size-4" aria-hidden="true" /> مقایسه انتخاب‌ها</Button>
+          <Button onClick={applyComparison} disabled={selected.length < 2}><Scale className="size-4" aria-hidden="true" /> مقایسه انتخاب‌ها</Button>
         </div>
         {catalog.isLoading ? <p className="mt-5 text-sm text-zinc-500">در حال دریافت کاتالوگ…</p> : null}
         {catalog.isError ? <p className="mt-5 text-sm text-zinc-500">فهرست محصولات برای مقایسه فعلاً در دسترس نیست.</p> : null}
@@ -67,6 +75,7 @@ export function CompareWorkbench({ initialSlugs }: { initialSlugs: readonly stri
       </section>
 
       <section className="mt-8" aria-live="polite">
+        {selected.length === 1 ? <p className="mb-4 rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">برای مشاهدهٔ جدول، یک محصول منتشرشدهٔ دیگر انتخاب کنید.</p> : null}
         {selected.length === 0 ? <EmptyState title="محصولی انتخاب نشده است" description="از کاتالوگ بالا یک تا چهار محصول را انتخاب کنید تا تفاوت آن‌ها را ببینید." icon={Scale} /> : null}
         {selected.length > 0 && compared.isLoading ? <StoreLoadingState label="در حال آماده‌سازی مقایسه…" /> : null}
         {selected.length > 0 && compared.isError ? <StoreErrorState message="مقایسه فقط برای محصولات منتشرشده و قابل مشاهده در کاتالوگ در دسترس است." /> : null}

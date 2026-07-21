@@ -1,8 +1,18 @@
-import { CatalogBrowser } from '@/components/store/catalog-browser';
+import type { Metadata } from 'next';
 
-type ProductsPageProps = Readonly<{ searchParams: Promise<{ category?: string }> }>;
+import { CatalogContainer } from '@/features/storefront/containers/catalog-container';
+import { storefrontUrl } from '@/features/storefront/services/metadata';
+
+type ProductsPageProps = Readonly<{ searchParams: Promise<Record<string, string | string[] | undefined>> }>;
+
+export const revalidate = 60;
+
+export const metadata: Metadata = {
+  title: 'محصولات اپل',
+  alternates: { canonical: storefrontUrl('/products') },
+};
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const params = await searchParams;
-  return <CatalogBrowser initialCategory={params.category ?? ''} />;
+  return <CatalogContainer searchParams={params} />;
 }

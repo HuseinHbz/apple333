@@ -1,5 +1,7 @@
-import { StoreHome } from '@/components/store/store-home';
+import { StorefrontHomeContainer } from '@/features/storefront/containers/storefront-home-container';
 
-export default function StorefrontHomePage() {
-  return <StoreHome />;
+export const revalidate = 60;
+
+export default async function StorefrontHomePage() {
+  return <StorefrontHomeContainer />;
 }

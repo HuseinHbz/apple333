@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { WishlistButton } from '@/features/storefront/components/wishlist-button';
 import type { PublicProductCardDto } from '@/modules/catalog/types';
 
 import { formatRials } from './store-utils';
@@ -11,11 +12,11 @@ export function StoreProductCard({ product }: { product: PublicProductCardDto })
   const productHref = `/products/${encodeURIComponent(product.slug)}`;
 
   return (
-    <Card className="group overflow-hidden rounded-3xl border-zinc-200 bg-white shadow-none transition duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-zinc-200/70">
+    <Card className="group relative overflow-hidden rounded-3xl border-zinc-200 bg-white shadow-none transition duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-zinc-200/70">
       <Link href={productHref} className="block focus:outline-none focus-visible:ring-4 focus-visible:ring-zinc-300">
         <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-zinc-100 via-white to-zinc-200">
           {product.heroMediaUrl ? (
-            <Image src={product.heroMediaUrl} alt={product.name} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition duration-500 group-hover:scale-105" unoptimized />
+            <Image src={product.heroMediaUrl} alt={product.name} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition duration-500 group-hover:scale-105" />
           ) : (
             <div className="flex h-full items-center justify-center text-center text-sm font-semibold text-zinc-400">تصویر محصول پس از ثبت در کاتالوگ نمایش داده می‌شود</div>
           )}
@@ -38,6 +39,7 @@ export function StoreProductCard({ product }: { product: PublicProductCardDto })
           </div>
         </div>
       </Link>
+      <WishlistButton productSlug={product.slug} compact className="absolute bottom-4 left-4 z-10 bg-white/95 shadow-sm" />
     </Card>
   );
 }
