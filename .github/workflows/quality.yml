@@ -104,8 +104,11 @@ jobs:
       NODE_ENV: test
       APPLE333_E2E_TEST_DB: "1"
       APP_NAME: Apple333
-      APP_URL: http://localhost:3000
-      AUTH_URL: http://localhost:3000
+      # Playwright targets 127.0.0.1; application origin validation must use
+      # the same public origin for same-origin storefront mutations.
+      APP_URL: http://127.0.0.1:3000
+      AUTH_URL: http://127.0.0.1:3000
+      NEXTAUTH_URL: http://127.0.0.1:3000
       AUTH_SECRET: ci-test-only-secret-not-valid-outside-ci-123456
       DATABASE_URL: postgresql://apple333:test-only@localhost:5432/apple333_test?schema=public
       REDIS_URL: redis://localhost:6379

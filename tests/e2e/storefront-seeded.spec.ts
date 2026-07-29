@@ -18,15 +18,15 @@ test.describe('seeded premium storefront flows', () => {
     await expect(search).toBeVisible();
     await search.fill('e2e-iphone-16-pro');
 
-    await expect(page).toHaveURL(/query=e2e-iphone-16-pro/);
+    await expect.poll(() => new URL(page.url()).searchParams.get('query')).toBe('e2e iphone 16 pro');
     await expect(page.getByRole('link', { name: proProduct })).toBeVisible();
   });
 
   test('compares two published PIM products', async ({ page }) => {
     await page.goto('/compare');
 
-    await page.getByRole('button', { name: proProduct }).click();
-    await page.getByRole('button', { name: standardProduct }).click();
+    await page.getByTestId('storefront-compare-product-e2e-iphone-16-pro').click();
+    await page.getByTestId('storefront-compare-product-e2e-iphone-16').click();
     const apply = page.getByRole('button', { name: /مقایسه انتخاب‌ها/ });
     await expect(apply).toBeEnabled();
     await apply.click();
@@ -53,10 +53,11 @@ test.describe('seeded premium storefront flows', () => {
 
     const addToCart = page.getByTestId('storefront-add-to-cart');
     await expect(addToCart).toBeEnabled();
-    await Promise.all([
+    const [cartResponse] = await Promise.all([
       page.waitForResponse((response) => response.url().includes('/api/store/cart/items') && response.request().method() === 'POST'),
       addToCart.click(),
     ]);
+    expect(cartResponse.status()).toBe(201);
 
     await page.goto('/cart');
     await expect(page.getByRole('link', { name: proProduct })).toBeVisible();

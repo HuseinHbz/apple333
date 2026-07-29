@@ -92,7 +92,7 @@ function ComparePicker({ products, selected, onToggle }: { products: readonly Pu
         const active = selected.includes(product.slug);
         const disabled = !active && selected.length >= 4;
         return (
-          <button key={product.id} type="button" onClick={() => onToggle(product.slug)} disabled={disabled} className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-right transition focus:outline-none focus-visible:ring-4 focus-visible:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 ${active ? 'border-zinc-950 bg-zinc-950 text-white' : 'border-zinc-200 hover:border-zinc-500'}`}>
+          <button key={product.id} type="button" data-testid={`storefront-compare-product-${product.slug}`} onClick={() => onToggle(product.slug)} disabled={disabled} className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-right transition focus:outline-none focus-visible:ring-4 focus-visible:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 ${active ? 'border-zinc-950 bg-zinc-950 text-white' : 'border-zinc-200 hover:border-zinc-500'}`}>
             <span className="min-w-0"><span className="block truncate text-sm font-bold">{product.name}</span><span className={`mt-1 block text-xs ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>{formatRials(product.startingPriceRials)}</span></span>
             <span className={`grid size-5 shrink-0 place-items-center rounded-full border ${active ? 'border-white bg-white text-zinc-950' : 'border-zinc-300 text-transparent'}`}><Check className="size-3" aria-hidden="true" /></span>
           </button>
