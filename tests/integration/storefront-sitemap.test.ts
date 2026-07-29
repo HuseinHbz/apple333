@@ -12,6 +12,8 @@ vi.mock('@/server/services/catalog-service', () => ({
 
 import sitemap, { generateSitemaps } from '@/app/sitemap';
 
+const TEST_APP_URL = process.env.APP_URL ?? 'http://localhost:3000';
+
 describe('storefront sitemap projection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,9 +34,9 @@ describe('storefront sitemap projection', () => {
   it('includes canonical public routes but excludes no-index products', async () => {
     const entries = await sitemap({ id: 0 });
     const urls = entries.map((entry) => entry.url);
-    expect(urls).toContain('http://localhost:3000/products/iphone-16-pro');
-    expect(urls).toContain('http://localhost:3000/categories/iphone');
-    expect(urls).not.toContain('http://localhost:3000/products/hidden-product');
+    expect(urls).toContain(new URL('/products/iphone-16-pro', TEST_APP_URL).toString());
+    expect(urls).toContain(new URL('/categories/iphone', TEST_APP_URL).toString());
+    expect(urls).not.toContain(new URL('/products/hidden-product', TEST_APP_URL).toString());
   });
 
   it('requests the correct shard window from the public PIM service', async () => {

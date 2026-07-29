@@ -39,6 +39,8 @@ describe('request security helpers', () => {
   });
 
   it('accepts a same-origin mutation with Origin or a browser Referer fallback', () => {
+    vi.stubEnv('APP_URL', 'https://apple333.test');
+
     expect(() => assertSameOriginForMutation(new Request('https://apple333.test/api/inventory', {
       method: 'POST',
       headers: { origin: 'https://apple333.test' },

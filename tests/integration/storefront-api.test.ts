@@ -64,8 +64,10 @@ const emptyCart = {
   items: [],
 } satisfies StorefrontCartDto;
 
+const TEST_ORIGIN = new URL(process.env.APP_URL ?? 'http://localhost:3000').origin;
+
 function request(path: string, init?: RequestInit): Request {
-  return new Request(`http://localhost${path}`, init);
+  return new Request(new URL(path, TEST_ORIGIN), init);
 }
 
 describe('storefront public API routes', () => {
@@ -140,7 +142,7 @@ describe('storefront public API routes', () => {
   it('requires same-origin cart mutations and sets an opaque guest-cart cookie', async () => {
     const response = await addCartItem(request('/api/store/cart/items', {
       method: 'POST',
-      headers: { origin: 'http://localhost' },
+      headers: { origin: TEST_ORIGIN },
       body: JSON.stringify({ variantId: 'ckz8x8x8x000001l4h3e5f6g7', quantity: 1 }),
     }));
 

@@ -70,6 +70,7 @@ const LOCATION_ID = 'cm1a2b3c4d5e6f7g8h9i0j1k3';
 const OTHER_LOCATION_ID = 'cm1a2b3c4d5e6f7g8h9i0j1k4';
 const INVENTORY_ITEM_ID = 'cm1a2b3c4d5e6f7g8h9i0j1k5';
 const RESERVATION_ID = 'cm1a2b3c4d5e6f7g8h9i0j1k6';
+const TEST_ORIGIN = new URL(process.env.APP_URL ?? 'http://localhost:3000').origin;
 
 const allPermissions: readonly Permission[] = [
   'inventory.read', 'inventory.receive', 'inventory.adjust', 'inventory.transfer', 'inventory.reserve', 'inventory.release', 'inventory.policy.update', 'devices.read', 'branches.read', 'branches.create', 'branches.update', 'warehouses.read', 'warehouses.create', 'warehouses.update',
@@ -93,10 +94,10 @@ function actor(
 }
 
 function request(path: string, init?: RequestInit): Request {
-  return new Request(`http://localhost${path}`, init);
+  return new Request(new URL(path, TEST_ORIGIN), init);
 }
 
-function mutation(path: string, body: unknown, origin = 'http://localhost'): Request {
+function mutation(path: string, body: unknown, origin = TEST_ORIGIN): Request {
   return request(path, { method: 'POST', headers: { origin, 'content-type': 'application/json', 'x-request-id': 'inventory_api_1234' }, body: JSON.stringify(body) });
 }
 
@@ -262,13 +263,13 @@ describe('Phase 06 inventory administrative APIs', () => {
   });
 
   it('rejects malformed branch identifiers before a patch', async () => {
-    const response = await patchBranch(request('/api/branches/not-valid', { method: 'PATCH', headers: { origin: 'http://localhost', 'content-type': 'application/json' }, body: JSON.stringify({ status: 'DISABLED' }) }), { params: Promise.resolve({ id: 'not-valid' }) });
+    const response = await patchBranch(request('/api/branches/not-valid', { method: 'PATCH', headers: { origin: TEST_ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'DISABLED' }) }), { params: Promise.resolve({ id: 'not-valid' }) });
     expect(response.status).toBe(400);
     expect(mocks.updateBranch).not.toHaveBeenCalled();
   });
 
   it('updates a branch and invalidates public availability', async () => {
-    const response = await patchBranch(request(`/api/branches/${BRANCH_ID}`, { method: 'PATCH', headers: { origin: 'http://localhost', 'content-type': 'application/json' }, body: JSON.stringify({ status: 'DISABLED' }) }), { params: Promise.resolve({ id: BRANCH_ID }) });
+    const response = await patchBranch(request(`/api/branches/${BRANCH_ID}`, { method: 'PATCH', headers: { origin: TEST_ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'DISABLED' }) }), { params: Promise.resolve({ id: BRANCH_ID }) });
     expect(response.status).toBe(200);
     expect(mocks.updateBranch).toHaveBeenCalledWith(expect.anything(), BRANCH_ID, { status: 'DISABLED' }, expect.anything());
     expect(mocks.revalidateStorefrontInventory).toHaveBeenCalledOnce();
@@ -299,7 +300,7 @@ describe('Phase 06 inventory administrative APIs', () => {
   });
 
   it('updates a warehouse status', async () => {
-    const response = await patchWarehouse(request(`/api/warehouses/${WAREHOUSE_ID}`, { method: 'PATCH', headers: { origin: 'http://localhost', 'content-type': 'application/json' }, body: JSON.stringify({ status: 'DISABLED' }) }), { params: Promise.resolve({ id: WAREHOUSE_ID }) });
+    const response = await patchWarehouse(request(`/api/warehouses/${WAREHOUSE_ID}`, { method: 'PATCH', headers: { origin: TEST_ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'DISABLED' }) }), { params: Promise.resolve({ id: WAREHOUSE_ID }) });
     expect(response.status).toBe(200);
     expect(mocks.updateWarehouse).toHaveBeenCalledWith(expect.anything(), WAREHOUSE_ID, { status: 'DISABLED' }, expect.anything());
   });
