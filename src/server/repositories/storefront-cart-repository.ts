@@ -13,7 +13,7 @@ const cartMediaSelect = {
 const cartInventorySelect = {
   onHand: true,
   reserved: true,
-  branch: { select: { id: true, name: true, city: true, isActive: true, isPickupEnabled: true } },
+  branch: { select: { id: true, name: true, city: true, isActive: true, status: true, isPickupEnabled: true } },
 } satisfies Prisma.BranchInventorySelect;
 
 export const storefrontCartSelect = {

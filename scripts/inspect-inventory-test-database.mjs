@@ -1,4 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   EXPECTED_INVENTORY_TEST_DATABASE,
@@ -10,6 +12,49 @@ const PHASE_06_MIGRATION = '20260721000000_phase_06_inventory_multi_branch';
 const expectedApplicationTables = new Set(
   Prisma.dmmf.datamodel.models.map((model) => model.dbName ?? model.name),
 );
+const requiredPhase06Indexes = new Set([
+  'InventoryItem_locationId_skuId_key',
+  'InventoryItem_warehouseId_skuId_idx',
+  'InventoryItem_skuId_availableQuantity_idx',
+  'StockMovement_idempotencyKey_key',
+  'StockMovement_skuId_createdAt_idx',
+  'DeviceUnit_imei_key',
+  'DeviceUnit_serialNumber_key',
+  'InventoryReservation_idempotencyKey_key',
+  'InventoryReservation_inventoryItemId_status_expiresAt_idx',
+]);
+const requiredPhase06ForeignKeys = new Set([
+  'Warehouse_branchId_fkey',
+  'InventoryLocation_warehouseId_fkey',
+  'InventoryItem_locationId_warehouseId_fkey',
+  'InventoryItem_skuId_fkey',
+  'StockMovement_skuId_fkey',
+  'StockMovement_fromLocationId_fkey',
+  'StockMovement_toLocationId_fkey',
+  'DeviceUnit_skuId_fkey',
+  'DeviceUnit_inventoryItemId_fkey',
+  'DeviceUnit_reservationId_fkey',
+  'InventoryReservation_inventoryItemId_fkey',
+]);
+const requiredPhase06Checks = new Set([
+  'InventoryItem_quantity_nonnegative_check',
+  'InventoryItem_reserved_nonnegative_check',
+  'InventoryItem_reserved_not_above_quantity_check',
+  'InventoryItem_available_balance_check',
+  'StockMovement_quantity_positive_check',
+  'StockMovement_distinct_locations_check',
+  'DeviceUnit_identifier_required_check',
+  'InventoryReservation_quantity_positive_check',
+]);
+const requiredLegacyBranchInventoryColumns = new Set(['branchId', 'variantId', 'onHand', 'reserved', 'updatedAt']);
+
+/**
+ * PostgreSQL installs plpgsql in public by default. Its presence alone does
+ * not mean an isolated database has application schema state.
+ */
+export function isExpectedPristinePublicObject(object) {
+  return object?.kind === 'extension' && object?.name === 'plpgsql';
+}
 
 function expectationFromArguments(argumentsList) {
   const requested = argumentsList.slice(2).filter((argument) => argument.startsWith('--expect-'));
@@ -29,7 +74,13 @@ async function inspect() {
 
   try {
     const identityRows = await prisma.$queryRaw`
-      SELECT current_database() AS database, current_user AS role, current_schema() AS schema
+      SELECT
+        current_database() AS database,
+        current_user AS role,
+        current_schema() AS schema,
+        inet_server_addr()::text AS "serverAddress",
+        inet_server_port() AS "serverPort",
+        version() AS version
     `;
     const identity = identityRows[0];
     if (!identity
@@ -63,7 +114,8 @@ async function inspect() {
       ) AS public_schema_objects
       ORDER BY kind ASC, name ASC
     `;
-    if (expectation === 'empty' && publicObjects.length !== 0) {
+    const unexpectedPublicObjects = publicObjects.filter((object) => !isExpectedPristinePublicObject(object));
+    if (expectation === 'empty' && unexpectedPublicObjects.length !== 0) {
       throw new Error('Expected a pristine isolated inventory test database before migration; public schema objects already exist.');
     }
 
@@ -90,14 +142,65 @@ async function inspect() {
       if (!phaseMigration || !phaseMigration.checksum || !phaseMigration.finishedAt || phaseMigration.rolledBackAt) {
         throw new Error('Migration verification failed; the Phase 06 migration is not completed with a checksum.');
       }
+      const unhealthyMigration = migrations.find((migration) => !migration.finishedAt || migration.rolledBackAt);
+      if (unhealthyMigration) {
+        throw new Error(`Migration verification failed; ${unhealthyMigration.name} is incomplete or rolled back.`);
+      }
+
+      const indexes = await prisma.$queryRaw`
+        SELECT indexname AS name, indexdef AS definition
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+        ORDER BY indexname ASC
+      `;
+      const indexNames = new Set(indexes.map((index) => index.name));
+      const missingIndexes = [...requiredPhase06Indexes].filter((name) => !indexNames.has(name));
+      if (missingIndexes.length > 0) {
+        throw new Error(`Migration verification failed; missing Phase 06 indexes: ${missingIndexes.join(', ')}.`);
+      }
+
+      const constraints = await prisma.$queryRaw`
+        SELECT
+          constraint_row.conname AS name,
+          constraint_row.contype AS type,
+          relation.relname AS "tableName",
+          pg_get_constraintdef(constraint_row.oid) AS definition
+        FROM pg_constraint AS constraint_row
+        INNER JOIN pg_class AS relation ON relation.oid = constraint_row.conrelid
+        INNER JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+        ORDER BY relation.relname ASC, constraint_row.conname ASC
+      `;
+      const foreignKeys = new Set(constraints.filter((constraint) => constraint.type === 'f').map((constraint) => constraint.name));
+      const checks = new Set(constraints.filter((constraint) => constraint.type === 'c').map((constraint) => constraint.name));
+      const missingForeignKeys = [...requiredPhase06ForeignKeys].filter((name) => !foreignKeys.has(name));
+      const missingChecks = [...requiredPhase06Checks].filter((name) => !checks.has(name));
+      if (missingForeignKeys.length > 0 || missingChecks.length > 0) {
+        throw new Error(`Migration verification failed; missing foreignKeys=${missingForeignKeys.join(', ') || 'none'}, checks=${missingChecks.join(', ') || 'none'}.`);
+      }
+
+      const legacyColumns = await prisma.$queryRaw`
+        SELECT column_name AS name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'BranchInventory'
+        ORDER BY ordinal_position ASC
+      `;
+      const legacyColumnNames = new Set(legacyColumns.map((column) => column.name));
+      const missingLegacyColumns = [...requiredLegacyBranchInventoryColumns].filter((name) => !legacyColumnNames.has(name));
+      if (missingLegacyColumns.length > 0) {
+        throw new Error(`Migration verification failed; legacy BranchInventory compatibility columns are missing: ${missingLegacyColumns.join(', ')}.`);
+      }
     }
-    console.log(`Inventory test database verified: database=${identity.database}, role=${identity.role}, schema=${identity.schema}, tables=${tableNames.length}.`);
+    console.log(`Inventory test database verified: database=${identity.database}, role=${identity.role}, schema=${identity.schema}, server=${identity.serverAddress ?? 'unknown'}:${identity.serverPort ?? 'unknown'}, tables=${tableNames.length}.`);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-inspect().catch((error) => {
-  console.error(error instanceof Error ? error.message : 'Inventory test database inspection failed.');
-  process.exitCode = 1;
-});
+const invokedPath = process.argv[1];
+if (invokedPath && resolve(invokedPath) === fileURLToPath(import.meta.url)) {
+  inspect().catch((error) => {
+    console.error(error instanceof Error ? error.message : 'Inventory test database inspection failed.');
+    process.exitCode = 1;
+  });
+}

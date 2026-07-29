@@ -13,6 +13,7 @@ import type {
   InventoryWarehouseDto,
 } from '@/modules/inventory/types';
 import { toInventoryAvailability } from '@/modules/inventory/availability';
+import { isSellableInventoryLocation } from '@/modules/inventory/sellable-stock';
 import type {
   AdjustInventoryInput,
   CreateBranchInput,
@@ -40,7 +41,12 @@ import {
   type StockMovementRecord,
   type WarehouseRecord,
 } from '@/server/repositories/inventory-repository';
-import { requireBranchAccess, type SessionActor } from '@/server/security/permissions';
+import {
+  requireBranchAccess,
+  requireGlobalInventoryScope,
+  resolveInventoryBranchScope,
+  type SessionActor,
+} from '@/server/security/permissions';
 
 type Transaction = Prisma.TransactionClient;
 
@@ -157,17 +163,25 @@ function mapDeviceUnit(record: DeviceUnitRecord): InventoryDeviceUnitDto {
 }
 
 function scopedBranchId(actor: SessionActor, candidate: string | undefined): string | undefined {
-  if (!actor.branchId) return candidate;
-  if (candidate !== undefined && candidate !== actor.branchId) {
+  const scopeBranchId = resolveInventoryBranchScope(actor);
+  if (scopeBranchId === undefined) {
+    return candidate;
+  }
+  if (candidate !== undefined) {
     requireBranchAccess(actor, candidate);
   }
-  return actor.branchId;
+  return scopeBranchId;
 }
 
 function assertLocationActive(location: InventoryLocationRecord & {
-  warehouse: { id: string; branchId: string; status: string; branch: { id: string; status: string } };
+  warehouse: { id: string; branchId: string; status: string; branch: { id: string; status: string; isActive: boolean } };
 }): void {
-  if (location.status !== 'ACTIVE' || location.warehouse.status !== 'ACTIVE' || location.warehouse.branch.status !== 'ACTIVE') {
+  if (
+    location.status !== 'ACTIVE'
+    || location.warehouse.status !== 'ACTIVE'
+    || location.warehouse.branch.status !== 'ACTIVE'
+    || !location.warehouse.branch.isActive
+  ) {
     throw new ValidationError({ locationId: 'Inventory changes require an active branch, warehouse, and location.' });
   }
 }
@@ -285,13 +299,9 @@ async function requireReplayLocationAccess(
 
 function assertReservableInventoryItem(item: InventoryItemRecord): void {
   const { location } = item;
-  if (
-    location.status !== 'ACTIVE'
-    || location.warehouse.status !== 'ACTIVE'
-    || location.warehouse.branch.status !== 'ACTIVE'
-  ) {
+  if (!isSellableInventoryLocation(location)) {
     throw new ValidationError({
-      inventoryItemId: 'Inventory reservations require an active branch, warehouse, and location.',
+      inventoryItemId: 'Inventory reservations require an active sellable STORAGE or PICKUP location.',
     });
   }
 }
@@ -354,20 +364,13 @@ function balanceAuditState(record: InventoryItemRecord | null) {
   };
 }
 
-async function applyProjectionDeltas(
-  sku: Readonly<{ variantId: string }>,
-  deltas: readonly Readonly<{ branchId: string; onHandDelta?: number; reservedDelta?: number }>[],
+async function synchronizeSellableBranchProjection(
+  variantId: string,
+  branchIds: readonly string[],
   transaction: Transaction,
 ): Promise<void> {
-  const merged = new Map<string, { onHandDelta: number; reservedDelta: number }>();
-  for (const delta of deltas) {
-    const current = merged.get(delta.branchId) ?? { onHandDelta: 0, reservedDelta: 0 };
-    current.onHandDelta += delta.onHandDelta ?? 0;
-    current.reservedDelta += delta.reservedDelta ?? 0;
-    merged.set(delta.branchId, current);
-  }
-  for (const [branchId, delta] of merged) {
-    await inventoryRepository.updateLegacyBranchProjection({ branchId, variantId: sku.variantId, ...delta }, transaction);
+  for (const branchId of new Set(branchIds)) {
+    await inventoryRepository.synchronizeSellableBranchProjection({ branchId, variantId }, transaction);
   }
 }
 
@@ -399,11 +402,17 @@ export async function inventoryDashboard(actor: SessionActor, branchId?: string)
 }
 
 export async function listBranches(actor: SessionActor, page = 1, pageSize = 100): Promise<Page<InventoryBranchDto>> {
-  const result = await inventoryRepository.findBranchPage({ page, pageSize, ...(actor.branchId ? { branchId: actor.branchId } : {}) });
+  const branchId = scopedBranchId(actor, undefined);
+  const result = await inventoryRepository.findBranchPage({ page, pageSize, ...(branchId === undefined ? {} : { branchId }) });
   return toPage(result.items.map(mapBranch), { page, pageSize }, result.total);
 }
 
-export async function createBranch(input: CreateBranchInput, context: AdminAuditContext): Promise<InventoryBranchDto> {
+export async function createBranch(
+  actor: SessionActor,
+  input: CreateBranchInput,
+  context: AdminAuditContext,
+): Promise<InventoryBranchDto> {
+  requireGlobalInventoryScope(actor);
   const record = await runInventoryTransaction(async (transaction) => {
     const branch = await inventoryRepository.createBranch(input, transaction);
     await auditLogRepository.create(auditInput(context, {
@@ -438,6 +447,9 @@ export async function updateBranch(
       ...(input.phone === undefined ? {} : { phone: input.phone }),
       ...(input.isPickupEnabled === undefined ? {} : { isPickupEnabled: input.isPickupEnabled }),
     }, transaction);
+    if (input.status !== undefined) {
+      await inventoryRepository.synchronizeSellableBranchProjectionsForBranch(branch.id, transaction);
+    }
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.branch.updated',
       entityType: 'Branch',
@@ -492,6 +504,9 @@ export async function updateWarehouse(
       ...(input.name === undefined ? {} : { name: input.name }),
       ...(input.status === undefined ? {} : { status: input.status }),
     }, transaction);
+    if (input.status !== undefined) {
+      await inventoryRepository.synchronizeSellableBranchProjectionsForBranch(warehouse.branchId, transaction);
+    }
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.warehouse.updated',
       entityType: 'Warehouse',
@@ -552,7 +567,7 @@ export async function receiveInventory(
         status: 'AVAILABLE',
       })), transaction);
     }
-    await applyProjectionDeltas(sku, [{ branchId: location.warehouse.branchId, onHandDelta: input.quantity }], transaction);
+    await synchronizeSellableBranchProjection(sku.variantId, [location.warehouse.branchId], transaction);
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.stock.received',
       entityType: 'InventoryItem',
@@ -609,7 +624,7 @@ export async function adjustInventory(
       performedById: actor.id,
       metadata: { reason: input.reason },
     }, transaction);
-    await applyProjectionDeltas(sku, [{ branchId: location.warehouse.branchId, onHandDelta: increase ? input.quantity : -input.quantity }], transaction);
+    await synchronizeSellableBranchProjection(sku.variantId, [location.warehouse.branchId], transaction);
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.stock.adjusted',
       entityType: 'InventoryItem',
@@ -687,9 +702,9 @@ export async function transferInventory(
       idempotencyKey: input.idempotencyKey,
       performedById: actor.id,
     }, transaction);
-    await applyProjectionDeltas(sku, [
-      { branchId: sourceLocation.warehouse.branchId, onHandDelta: -input.quantity },
-      { branchId: destinationLocation.warehouse.branchId, onHandDelta: input.quantity },
+    await synchronizeSellableBranchProjection(sku.variantId, [
+      sourceLocation.warehouse.branchId,
+      destinationLocation.warehouse.branchId,
     ], transaction);
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.stock.transferred',
@@ -716,6 +731,7 @@ export async function configureSkuTracking(
   input: Readonly<{ sku: string; trackingMode: 'NONE' | 'SERIAL' | 'IMEI' | 'SERIAL_AND_IMEI' }>,
   context: AdminAuditContext,
 ): Promise<Readonly<{ sku: string; trackingMode: 'NONE' | 'SERIAL' | 'IMEI' | 'SERIAL_AND_IMEI' }>> {
+  requireGlobalInventoryScope(actor);
   return runInventoryTransaction(async (transaction) => {
     const sku = await resolveSku(input.sku, transaction);
     const deviceCount = await inventoryRepository.countDeviceUnitsBySku(sku.id, transaction);
@@ -785,7 +801,7 @@ export async function reserveInventory(
       performedById: actor.id,
       metadata: { reservationId: reservation.id },
     }, transaction);
-    await applyProjectionDeltas(item.sku, [{ branchId: item.location.warehouse.branch.id, reservedDelta: input.quantity }], transaction);
+    await synchronizeSellableBranchProjection(item.sku.variantId, [item.location.warehouse.branch.id], transaction);
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.reservation.created',
       entityType: 'InventoryReservation',
@@ -840,7 +856,7 @@ export async function releaseInventoryReservation(
       performedById: actor.id,
       metadata: { reservationId: reservation.id },
     }, transaction);
-    await applyProjectionDeltas(item.sku, [{ branchId: item.location.warehouse.branch.id, reservedDelta: -reservation.quantity }], transaction);
+    await synchronizeSellableBranchProjection(item.sku.variantId, [item.location.warehouse.branch.id], transaction);
     await auditLogRepository.create(auditInput(context, {
       action: 'inventory.reservation.released',
       entityType: 'InventoryReservation',

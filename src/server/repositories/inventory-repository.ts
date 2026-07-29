@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
+import { SELLABLE_LOCATION_TYPES } from '@/modules/inventory/sellable-stock';
 import type {
   CreateBranchInput,
   CreateWarehouseInput,
@@ -79,7 +80,7 @@ export const inventoryItemSelect = {
           code: true,
           name: true,
           status: true,
-          branch: { select: { id: true, code: true, name: true, status: true } },
+          branch: { select: { id: true, code: true, name: true, status: true, isActive: true } },
         },
       },
     },
@@ -189,6 +190,25 @@ function inventoryItemWhere(query: InventoryPageQuery): Prisma.InventoryItemWher
     conditions.push({ sku: { is: { code: { contains: query.query, mode: 'insensitive' } } } });
   }
   return conditions.length === 1 && Object.keys(conditions[0] ?? {}).length === 0 ? {} : { AND: conditions };
+}
+
+function sellableInventoryItemWhere(input: Readonly<{ branchId: string; variantId: string }>): Prisma.InventoryItemWhereInput {
+  return {
+    sku: { is: { variantId: input.variantId } },
+    location: {
+      is: {
+        type: { in: [...SELLABLE_LOCATION_TYPES] },
+        status: 'ACTIVE',
+        warehouse: {
+          is: {
+            branchId: input.branchId,
+            status: 'ACTIVE',
+            branch: { is: { status: 'ACTIVE', isActive: true } },
+          },
+        },
+      },
+    },
+  };
 }
 
 function deviceUnitWhere(query: InventoryDeviceListQuery): Prisma.DeviceUnitWhereInput {
@@ -319,12 +339,12 @@ export const inventoryRepository = {
   findLocationById(
     id: string,
     client: AdminDatabaseClient = prisma,
-  ): Promise<(InventoryLocationRecord & { warehouse: { id: string; branchId: string; status: string; branch: { id: string; status: string } } }) | null> {
+  ): Promise<(InventoryLocationRecord & { warehouse: { id: string; branchId: string; status: string; branch: { id: string; status: string; isActive: boolean } } }) | null> {
     return client.inventoryLocation.findUnique({
       where: { id },
       select: {
         ...inventoryLocationSelect,
-        warehouse: { select: { id: true, branchId: true, status: true, branch: { select: { id: true, status: true } } } },
+        warehouse: { select: { id: true, branchId: true, status: true, branch: { select: { id: true, status: true, isActive: true } } } },
       },
     });
   },
@@ -531,7 +551,13 @@ export const inventoryRepository = {
     return client.inventoryItem.findMany({
       where: {
         sku: { is: { code: skuCode } },
-        location: { is: { status: 'ACTIVE', warehouse: { is: { status: 'ACTIVE', branch: { is: { status: 'ACTIVE' } } } } } },
+        location: {
+          is: {
+            status: 'ACTIVE',
+            type: { in: [...SELLABLE_LOCATION_TYPES] },
+            warehouse: { is: { status: 'ACTIVE', branch: { is: { status: 'ACTIVE', isActive: true } } } },
+          },
+        },
       },
       select: {
         availableQuantity: true,
@@ -540,29 +566,43 @@ export const inventoryRepository = {
     });
   },
 
-  async updateLegacyBranchProjection(
-    input: Readonly<{ branchId: string; variantId: string; onHandDelta?: number; reservedDelta?: number }>,
+  async synchronizeSellableBranchProjection(
+    input: Readonly<{ branchId: string; variantId: string }>,
+    client: AdminDatabaseClient,
+  ): Promise<Readonly<{ onHand: number; reserved: number }>> {
+    const totals = await client.inventoryItem.aggregate({
+      where: sellableInventoryItemWhere(input),
+      _sum: { quantity: true, reservedQuantity: true },
+    });
+    const onHand = totals._sum.quantity ?? 0;
+    const reserved = totals._sum.reservedQuantity ?? 0;
+    if (onHand < 0 || reserved < 0 || reserved > onHand) throw new ConflictError();
+    const where = { branchId_variantId: { branchId: input.branchId, variantId: input.variantId } };
+    await client.branchInventory.upsert({
+      where,
+      create: { branchId: input.branchId, variantId: input.variantId, onHand, reserved },
+      update: { onHand, reserved },
+    });
+    return { onHand, reserved };
+  },
+
+  async synchronizeSellableBranchProjectionsForBranch(
+    branchId: string,
     client: AdminDatabaseClient,
   ): Promise<void> {
-    const onHandDelta = input.onHandDelta ?? 0;
-    const reservedDelta = input.reservedDelta ?? 0;
-    if (onHandDelta === 0 && reservedDelta === 0) return;
-    const where = { branchId_variantId: { branchId: input.branchId, variantId: input.variantId } };
-    const existing = await client.branchInventory.findUnique({ where, select: { onHand: true, reserved: true } });
-    const nextOnHand = (existing?.onHand ?? 0) + onHandDelta;
-    const nextReserved = (existing?.reserved ?? 0) + reservedDelta;
-    if (nextOnHand < 0 || nextReserved < 0 || nextReserved > nextOnHand) {
-      throw new ConflictError();
+    const [physicalItems, existingProjections] = await Promise.all([
+      client.inventoryItem.findMany({
+        where: { location: { is: { warehouse: { is: { branchId } } } } },
+        select: { sku: { select: { variantId: true } } },
+      }),
+      client.branchInventory.findMany({ where: { branchId }, select: { variantId: true } }),
+    ]);
+    const variantIds = new Set([
+      ...physicalItems.map((item) => item.sku.variantId),
+      ...existingProjections.map((projection) => projection.variantId),
+    ]);
+    for (const variantId of variantIds) {
+      await inventoryRepository.synchronizeSellableBranchProjection({ branchId, variantId }, client);
     }
-    if (!existing) {
-      await client.branchInventory.create({
-        data: { branchId: input.branchId, variantId: input.variantId, onHand: nextOnHand, reserved: nextReserved },
-      });
-      return;
-    }
-    await client.branchInventory.update({
-      where,
-      data: { onHand: nextOnHand, reserved: nextReserved },
-    });
   },
 };

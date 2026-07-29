@@ -75,8 +75,21 @@ const allPermissions: readonly Permission[] = [
   'inventory.read', 'inventory.receive', 'inventory.adjust', 'inventory.transfer', 'inventory.reserve', 'inventory.release', 'inventory.policy.update', 'devices.read', 'branches.read', 'branches.create', 'branches.update', 'warehouses.read', 'warehouses.create', 'warehouses.update',
 ] as const;
 
-function actor(permissions: readonly Permission[] = allPermissions): SessionActor {
-  return { id: 'inventory-admin', isAdmin: true, roleCodes: ['INVENTORY_MANAGER'], permissions: new Set<Permission>(permissions) };
+const readOnlyPermissions: readonly Permission[] = [
+  'inventory.read', 'devices.read', 'branches.read', 'warehouses.read',
+] as const;
+
+function actor(
+  permissions: readonly Permission[] = allPermissions,
+  options: Readonly<{ roleCodes?: readonly string[]; branchId?: string }> = {},
+): SessionActor {
+  return {
+    id: 'inventory-admin',
+    isAdmin: true,
+    roleCodes: options.roleCodes ?? ['INVENTORY_MANAGER'],
+    permissions: new Set<Permission>(permissions),
+    ...(options.branchId === undefined ? {} : { branchId: options.branchId }),
+  };
 }
 
 function request(path: string, init?: RequestInit): Request {
@@ -241,7 +254,11 @@ describe('Phase 06 inventory administrative APIs', () => {
   it('creates a normalized branch payload', async () => {
     const response = await postBranch(mutation('/api/branches', { code: 'teh-01', name: 'Tehran' }));
     expect(response.status).toBe(201);
-    expect(mocks.createBranch).toHaveBeenCalledWith(expect.objectContaining({ code: 'TEH-01' }), expect.anything());
+    expect(mocks.createBranch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ code: 'TEH-01' }),
+      expect.anything(),
+    );
   });
 
   it('rejects malformed branch identifiers before a patch', async () => {
@@ -297,5 +314,60 @@ describe('Phase 06 inventory administrative APIs', () => {
     const response = await getDeviceUnits(request('/api/imei?sku=iphone-16-pro&status=AVAILABLE'));
     expect(response.status).toBe(200);
     expect(mocks.listDeviceUnits).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ sku: 'IPHONE-16-PRO', status: 'AVAILABLE' }));
+  });
+
+  it.each(['SUPER_ADMIN', 'INVENTORY_MANAGER'])('allows %s to invoke an intended inventory mutation', async (roleCode) => {
+    mocks.requireAdminActor.mockResolvedValue(actor(allPermissions, { roleCodes: [roleCode] }));
+
+    const response = await receive(mutation('/api/inventory/receive', {
+      sku: 'IPHONE-16-PRO', toLocationId: LOCATION_ID, quantity: 1, idempotencyKey: `actor-${roleCode.toLowerCase()}-receive`,
+    }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.receiveInventory).toHaveBeenCalledOnce();
+  });
+
+  it('allows READ_ONLY_USER inventory/device views but rejects all stock mutations', async () => {
+    mocks.requireAdminActor.mockResolvedValue(actor(readOnlyPermissions, { roleCodes: ['READ_ONLY_USER'] }));
+
+    const [inventoryResponse, branchResponse, warehouseResponse, deviceResponse] = await Promise.all([
+      getInventory(request('/api/inventory?page=1&pageSize=10')),
+      getBranches(request('/api/branches?page=1&pageSize=10')),
+      getWarehouses(request('/api/warehouses?page=1&pageSize=10')),
+      getDeviceUnits(request('/api/imei?sku=IPHONE-16-PRO')),
+    ]);
+    for (const response of [inventoryResponse, branchResponse, warehouseResponse, deviceResponse]) {
+      expect(response.status).toBe(200);
+    }
+
+    const [receiveResponse, adjustResponse, transferResponse, reserveResponse, releaseResponse] = await Promise.all([
+      receive(mutation('/api/inventory/receive', { sku: 'IPHONE-16-PRO', toLocationId: LOCATION_ID, quantity: 1, idempotencyKey: 'readonly-receive-0001' })),
+      adjust(mutation('/api/inventory/adjust', { sku: 'IPHONE-16-PRO', locationId: LOCATION_ID, quantity: 1, direction: 'INCREASE', reason: 'denied', idempotencyKey: 'readonly-adjust-0001' })),
+      transfer(mutation('/api/inventory/transfer', { sku: 'IPHONE-16-PRO', fromLocationId: LOCATION_ID, toLocationId: OTHER_LOCATION_ID, quantity: 1, idempotencyKey: 'readonly-transfer-0001' })),
+      reserve(mutation('/api/inventory/reservations', { inventoryItemId: INVENTORY_ITEM_ID, quantity: 1, idempotencyKey: 'readonly-reserve-0001' })),
+      releaseReservation(mutation(`/api/inventory/reservations/${RESERVATION_ID}/release`, { idempotencyKey: 'readonly-release-0001' }), { params: Promise.resolve({ id: RESERVATION_ID }) }),
+    ]);
+    for (const response of [receiveResponse, adjustResponse, transferResponse, reserveResponse, releaseResponse]) {
+      expect(response.status).toBe(403);
+    }
+    expect(mocks.receiveInventory).not.toHaveBeenCalled();
+    expect(mocks.adjustInventory).not.toHaveBeenCalled();
+    expect(mocks.transferInventory).not.toHaveBeenCalled();
+    expect(mocks.reserveInventory).not.toHaveBeenCalled();
+    expect(mocks.releaseInventoryReservation).not.toHaveBeenCalled();
+  });
+
+  it('denies NO_PERMISSION_USER inventory reads and mutations', async () => {
+    mocks.requireAdminActor.mockResolvedValue(actor([], { roleCodes: ['NO_PERMISSION_USER'] }));
+
+    const [readResponse, deviceResponse, mutationResponse] = await Promise.all([
+      getInventory(request('/api/inventory?page=1&pageSize=10')),
+      getDeviceUnits(request('/api/imei?sku=IPHONE-16-PRO')),
+      receive(mutation('/api/inventory/receive', { sku: 'IPHONE-16-PRO', toLocationId: LOCATION_ID, quantity: 1, idempotencyKey: 'no-permission-receive-0001' })),
+    ]);
+    expect(readResponse.status).toBe(403);
+    expect(deviceResponse.status).toBe(403);
+    expect(mutationResponse.status).toBe(403);
+    expect(mocks.receiveInventory).not.toHaveBeenCalled();
   });
 });

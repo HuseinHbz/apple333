@@ -93,7 +93,9 @@ function readAuditFile(pathname) {
   }
 
   try {
-    return JSON.parse(readFileSync(reportPath, 'utf8'));
+    // PowerShell's UTF-8 output can include a byte-order mark. Accept that
+    // standard local artifact format without relaxing JSON validation.
+    return JSON.parse(readFileSync(reportPath, 'utf8').replace(/^\uFEFF/, ''));
   } catch {
     throw new Error(`Audit report is not valid JSON: ${reportPath}`);
   }

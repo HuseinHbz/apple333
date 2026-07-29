@@ -1,10 +1,20 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const EXPECTED_INVENTORY_TEST_DATABASE = 'apple333_inventory_test';
-export const EXPECTED_INVENTORY_TEST_USER = 'apple333_inventory_test';
+export const EXPECTED_INVENTORY_TEST_DATABASE = 'apple333_phase06_test';
+export const EXPECTED_INVENTORY_TEST_USER = 'apple333_phase06_test';
 export const EXPECTED_INVENTORY_TEST_PORT = '55433';
 export const ALLOWED_INVENTORY_TEST_HOSTS = new Set(['127.0.0.1']);
+
+const REQUIRED_TEST_DATABASE_ACKNOWLEDGEMENT = 'APPLE333_TEST_DB';
+const LEGACY_TEST_DATABASE_ACKNOWLEDGEMENT = 'APPLE333_INVENTORY_TEST_DB';
+
+function validateOptionalIdentity(environment, key, expectedValue) {
+  if (environment[key] !== undefined && environment[key] !== expectedValue) {
+    return `${key}, when set, must be exactly "${expectedValue}".`;
+  }
+  return undefined;
+}
 
 /**
  * Validates only environment strings. It does not import Prisma, connect to a
@@ -18,8 +28,24 @@ export function validateInventoryTestEnvironment(environment = process.env) {
   const errors = [];
 
   if (environment.NODE_ENV !== 'test') errors.push('NODE_ENV must be exactly "test".');
-  if (environment.APPLE333_INVENTORY_TEST_DB !== '1') {
-    errors.push('APPLE333_INVENTORY_TEST_DB must be exactly "1".');
+  if (environment[REQUIRED_TEST_DATABASE_ACKNOWLEDGEMENT] !== '1') {
+    errors.push(`${REQUIRED_TEST_DATABASE_ACKNOWLEDGEMENT} must be exactly "1".`);
+  }
+  if (
+    environment[LEGACY_TEST_DATABASE_ACKNOWLEDGEMENT] !== undefined
+    && environment[LEGACY_TEST_DATABASE_ACKNOWLEDGEMENT] !== '1'
+  ) {
+    errors.push(`${LEGACY_TEST_DATABASE_ACKNOWLEDGEMENT}, when set for compatibility, must be exactly "1".`);
+  }
+
+  for (const [key, expectedValue] of [
+    ['INVENTORY_TEST_POSTGRES_DB', EXPECTED_INVENTORY_TEST_DATABASE],
+    ['INVENTORY_TEST_POSTGRES_USER', EXPECTED_INVENTORY_TEST_USER],
+    ['INVENTORY_TEST_POSTGRES_BIND', '127.0.0.1'],
+    ['INVENTORY_TEST_POSTGRES_PORT', EXPECTED_INVENTORY_TEST_PORT],
+  ]) {
+    const identityError = validateOptionalIdentity(environment, key, expectedValue);
+    if (identityError) errors.push(identityError);
   }
 
   const databaseUrl = environment.INVENTORY_TEST_DATABASE_URL;
@@ -54,6 +80,9 @@ export function validateInventoryTestEnvironment(environment = process.env) {
     errors.push('INVENTORY_TEST_DATABASE_URL must contain exactly one schema=public parameter.');
   }
   if (parsedUrl.hash) errors.push('INVENTORY_TEST_DATABASE_URL must not contain a URL fragment.');
+  if (environment.DATABASE_URL && environment.DATABASE_URL !== databaseUrl) {
+    errors.push('DATABASE_URL must be unset or exactly match INVENTORY_TEST_DATABASE_URL.');
+  }
 
   return { ok: errors.length === 0, errors };
 }

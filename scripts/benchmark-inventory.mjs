@@ -190,10 +190,18 @@ async function seedReferenceData(prisma, context) {
   });
 }
 
-function buildBatch(context, startOrdinal, size) {
+/**
+ * Build a self-consistent benchmark fixture. Every generated InventoryItem is
+ * stored in an active sellable STORAGE location, so its branch/variant
+ * BranchInventory row must be created in the same transaction. Keeping the
+ * projection here prevents benchmark data from introducing reconciliation
+ * drift into the isolated test database.
+ */
+export function buildInventoryBenchmarkBatch(context, startOrdinal, size) {
   const variants = [];
   const skus = [];
   const balances = [];
+  const projections = [];
   for (let offset = 0; offset < size; offset += 1) {
     const ordinal = startOrdinal + offset;
     const variantId = context.variantId(ordinal);
@@ -212,30 +220,40 @@ function buildBatch(context, startOrdinal, size) {
         reservedQuantity: 0,
         availableQuantity: quantity,
       });
+      projections.push({
+        branchId: context.branchId(branchIndex),
+        variantId,
+        onHand: quantity,
+        reserved: 0,
+      });
     }
   }
-  return { variants, skus, balances };
+  return { variants, skus, balances, projections };
 }
 
 async function seedScale(prisma, context, scale, batchSize) {
   const startedAt = performance.now();
   for (let ordinal = 1; ordinal <= scale; ordinal += batchSize) {
     const size = Math.min(batchSize, scale - ordinal + 1);
-    const batch = buildBatch(context, ordinal, size);
+    const batch = buildInventoryBenchmarkBatch(context, ordinal, size);
     await prisma.$transaction(async (transaction) => {
       await transaction.catalogVariant.createMany({ data: batch.variants });
       await transaction.productSku.createMany({ data: batch.skus });
       await transaction.inventoryItem.createMany({ data: batch.balances });
+      await transaction.branchInventory.createMany({ data: batch.projections });
     }, { maxWait: 10_000, timeout: 60_000 });
     const completed = ordinal + size - 1;
     if (completed === scale || completed % 10_000 === 0) console.log(`Inventory benchmark fixture progress: skus=${completed}/${scale}.`);
   }
-  const [skuCount, balanceCount] = await Promise.all([
+  const [skuCount, balanceCount, projectionCount] = await Promise.all([
     prisma.productSku.count({ where: { code: { startsWith: context.skuPrefix } } }),
     prisma.inventoryItem.count({ where: { skuId: { startsWith: `${context.prefix}-sku-` } } }),
+    prisma.branchInventory.count({ where: { variantId: { startsWith: `${context.prefix}-variant-` } } }),
   ]);
-  if (skuCount !== scale || balanceCount !== scale * 4) {
-    throw new Error(`Benchmark fixture count mismatch: expected skus=${scale}, balances=${scale * 4}; found skus=${skuCount}, balances=${balanceCount}.`);
+  if (skuCount !== scale || balanceCount !== scale * 4 || projectionCount !== scale * 4) {
+    throw new Error(
+      `Benchmark fixture count mismatch: expected skus=${scale}, balances=${scale * 4}, projections=${scale * 4}; found skus=${skuCount}, balances=${balanceCount}, projections=${projectionCount}.`,
+    );
   }
   return Number((performance.now() - startedAt).toFixed(3));
 }
@@ -267,9 +285,9 @@ function usage() {
 
 Required environment:
   NODE_ENV=test
-  APPLE333_INVENTORY_TEST_DB=1
+  APPLE333_TEST_DB=1
   APPLE333_E2E_TEST_DB=1 (only if the local app shares the same test target)
-  INVENTORY_TEST_DATABASE_URL=postgresql://apple333_inventory_test:<password>@127.0.0.1:55433/apple333_inventory_test?schema=public
+  INVENTORY_TEST_DATABASE_URL=postgresql://apple333_phase06_test:<password>@127.0.0.1:55433/apple333_phase06_test?schema=public
   INVENTORY_BENCHMARK_ALLOW_SEED=1
   INVENTORY_BENCHMARK_RUN_ID=<new-unique-id>
   INVENTORY_BENCHMARK_API_BASE_URL=${INVENTORY_BENCHMARK_API_BASE_URL}

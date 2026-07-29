@@ -13,5 +13,5 @@ export const POST = withAdminRoute<CreateBranchInput>({
   mutation: true,
   status: 201,
   parse: jsonBody(createBranchInput),
-  handler: ({ input, audit }) => createBranch(input, audit),
+  handler: ({ actor, input, audit }) => createBranch(actor, input, audit),
 });

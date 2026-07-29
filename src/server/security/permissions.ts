@@ -80,6 +80,16 @@ export type SessionActor = {
 
 const permissionSet = new Set<string>(PERMISSIONS);
 
+/**
+ * These roles are explicitly allowed to operate across branches. A user that
+ * also carries a branch-scoped role remains global only when one of these
+ * roles is present; this preserves explicit full-platform administration.
+ */
+export const INVENTORY_GLOBAL_ROLE_CODES = ['SUPER_ADMIN', 'ADMIN', 'INVENTORY_MANAGER'] as const;
+
+/** Roles whose inventory authority is always bound to AdminUser.branchId. */
+export const INVENTORY_BRANCH_SCOPED_ROLE_CODES = ['BRANCH_MANAGER', 'WAREHOUSE_STAFF'] as const;
+
 export function isPermission(value: string): value is Permission {
   return permissionSet.has(value);
 }
@@ -110,8 +120,37 @@ export function requireAllPermissions(actor: SessionActor, permissions: readonly
   }
 }
 
+/**
+ * Resolves the effective inventory branch scope once for every inventory
+ * service path. Pure branch-scoped actors must be provisioned with a branch;
+ * a missing AdminUser.branchId is an authorization failure, never global
+ * scope.
+ */
+export function resolveInventoryBranchScope(actor: SessionActor): string | undefined {
+  if (INVENTORY_GLOBAL_ROLE_CODES.some((roleCode) => actor.roleCodes.includes(roleCode))) {
+    return undefined;
+  }
+
+  if (INVENTORY_BRANCH_SCOPED_ROLE_CODES.some((roleCode) => actor.roleCodes.includes(roleCode))) {
+    if (!actor.branchId) {
+      throw new AuthorizationError();
+    }
+    return actor.branchId;
+  }
+
+  return actor.branchId ?? undefined;
+}
+
+/** Use for inventory configuration that has no meaningful branch target. */
+export function requireGlobalInventoryScope(actor: SessionActor): void {
+  if (resolveInventoryBranchScope(actor) !== undefined) {
+    throw new AuthorizationError();
+  }
+}
+
 export function requireBranchAccess(actor: SessionActor, branchId?: string | null): void {
-  if (actor.branchId && branchId && actor.branchId !== branchId) {
+  const scopedBranchId = resolveInventoryBranchScope(actor);
+  if (scopedBranchId && branchId && scopedBranchId !== branchId) {
     throw new AuthorizationError();
   }
 }

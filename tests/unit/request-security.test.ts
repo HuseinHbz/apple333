@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { assertRateLimit, requestIp } from '@/server/security/request-security';
-import { RateLimitError } from '@/server/errors/app-error';
+import { assertRateLimit, assertSameOriginForMutation, requestIp } from '@/server/security/request-security';
+import { AuthorizationError, RateLimitError } from '@/server/errors/app-error';
 
 describe('request security helpers', () => {
   afterEach(() => {
@@ -36,5 +36,34 @@ describe('request security helpers', () => {
 
     expect(() => assertRateLimit(key, 1, 60_000)).not.toThrow();
     expect(() => assertRateLimit(key, 1, 60_000)).toThrow(RateLimitError);
+  });
+
+  it('accepts a same-origin mutation with Origin or a browser Referer fallback', () => {
+    expect(() => assertSameOriginForMutation(new Request('https://apple333.test/api/inventory', {
+      method: 'POST',
+      headers: { origin: 'https://apple333.test' },
+    }))).not.toThrow();
+    expect(() => assertSameOriginForMutation(new Request('https://apple333.test/api/inventory', {
+      method: 'POST',
+      headers: { referer: 'https://apple333.test/admin/inventory' },
+    }))).not.toThrow();
+  });
+
+  it('uses the trusted public APP_URL when a reverse proxy changes the internal request URL', () => {
+    vi.stubEnv('APP_URL', 'https://apple333.test');
+    expect(() => assertSameOriginForMutation(new Request('http://next-internal:3000/api/inventory', {
+      method: 'POST',
+      headers: { origin: 'https://apple333.test' },
+    }))).not.toThrow();
+  });
+
+  it('rejects mutations without trustworthy same-origin evidence', () => {
+    expect(() => assertSameOriginForMutation(new Request('https://apple333.test/api/inventory', {
+      method: 'POST',
+      headers: { referer: 'https://attacker.example/form' },
+    }))).toThrow(AuthorizationError);
+    expect(() => assertSameOriginForMutation(new Request('https://apple333.test/api/inventory', {
+      method: 'POST',
+    }))).toThrow(AuthorizationError);
   });
 });

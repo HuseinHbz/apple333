@@ -45,13 +45,39 @@ export function requestUserAgent(request: Request): string | undefined {
   return request.headers.get('user-agent')?.slice(0, 512) || undefined;
 }
 
+function trustedApplicationOrigin(request: Request): string {
+  // APP_URL is validated by the server environment and represents the public
+  // origin. Prefer it over a framework-internal request URL, which can differ
+  // when Next.js runs behind a reverse proxy or standalone runtime.
+  if (process.env.APP_URL) {
+    return new URL(process.env.APP_URL).origin;
+  }
+  return new URL(request.url).origin;
+}
+
 export function assertSameOriginForMutation(request: Request): void {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
     return;
   }
 
+  const requestOrigin = trustedApplicationOrigin(request);
   const origin = request.headers.get('origin');
-  if (!origin || origin !== new URL(request.url).origin) {
+  if (origin) {
+    if (origin !== requestOrigin) {
+      throw new AuthorizationError();
+    }
+    return;
+  }
+
+  // Same-origin browser mutations do not consistently send Origin. A Referer
+  // fallback preserves CSRF protection without rejecting legitimate browser
+  // fetches; missing, malformed, or cross-origin values still fail closed.
+  const referer = request.headers.get('referer');
+  try {
+    if (!referer || new URL(referer).origin !== requestOrigin) {
+      throw new AuthorizationError();
+    }
+  } catch {
     throw new AuthorizationError();
   }
 }

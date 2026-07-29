@@ -20,7 +20,9 @@ const MAX_CART_LINES = 20;
 type InventoryEntry = StorefrontCartRecord['items'][number]['variant']['inventory'][number];
 
 function available(entry: InventoryEntry): number {
-  return entry.branch.isActive ? Math.max(entry.onHand - entry.reserved, 0) : 0;
+  return entry.branch.isActive && entry.branch.status === 'ACTIVE'
+    ? Math.max(entry.onHand - entry.reserved, 0)
+    : 0;
 }
 
 function availability(entries: readonly InventoryEntry[]): ProductAvailability {
@@ -45,7 +47,7 @@ function asCartItem(item: StorefrontCartRecord['items'][number]): StorefrontCart
     availability: availability(variant.inventory),
     heroMediaUrl: heroMediaUrl(variant.product.id, variant.product.media),
     branches: variant.inventory
-      .filter((entry) => entry.branch.isActive && entry.branch.isPickupEnabled)
+      .filter((entry) => entry.branch.isActive && entry.branch.status === 'ACTIVE' && entry.branch.isPickupEnabled)
       .map((entry) => ({
         id: entry.branch.id,
         name: entry.branch.name,
@@ -160,12 +162,12 @@ function pickupBranchFor(
   branchId: string,
 ): StorefrontQuoteDto['pickupBranch'] {
   const firstMatch = cart.items[0]?.variant.inventory.find(
-    (entry) => entry.branch.id === branchId && entry.branch.isActive && entry.branch.isPickupEnabled && available(entry) > 0,
+    (entry) => entry.branch.id === branchId && entry.branch.isActive && entry.branch.status === 'ACTIVE' && entry.branch.isPickupEnabled && available(entry) > 0,
   );
   if (!firstMatch) return null;
 
   const fulfillsEveryItem = cart.items.every((item) => item.variant.inventory.some(
-    (entry) => entry.branch.id === branchId && entry.branch.isActive && entry.branch.isPickupEnabled && available(entry) >= item.quantity,
+    (entry) => entry.branch.id === branchId && entry.branch.isActive && entry.branch.status === 'ACTIVE' && entry.branch.isPickupEnabled && available(entry) >= item.quantity,
   ));
   return fulfillsEveryItem
     ? { id: firstMatch.branch.id, name: firstMatch.branch.name, city: firstMatch.branch.city }

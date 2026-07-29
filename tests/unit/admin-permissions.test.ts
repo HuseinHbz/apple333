@@ -33,7 +33,7 @@ describe('enterprise permissions', () => {
   });
 
   it('enforces branch scope and server-side UI access', () => {
-    const branchActor = actor({ branchId: 'branch-a' });
+    const branchActor = actor({ roleCodes: ['BRANCH_MANAGER'], branchId: 'branch-a' });
     expect(() => requireBranchAccess(branchActor, 'branch-b')).toThrow(AuthorizationError);
     expect(canAccessAdminRoute(branchActor, 'users.read')).toBe(true);
     expect(canAccessAdminRoute(actor({ isAdmin: false }), 'users.read')).toBe(false);

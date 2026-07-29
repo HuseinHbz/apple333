@@ -9,7 +9,14 @@ const rootDirectory = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/database/inventory-persistence.test.ts'],
+    include: [
+      'tests/database/inventory-persistence.test.ts',
+      'tests/database/inventory-concurrency.test.ts',
+    ],
+    // The suites share one disposable PostgreSQL database. Keep fixture setup
+    // deterministic; the concurrency cases themselves still use parallel
+    // operations within each test.
+    fileParallelism: false,
     hookTimeout: 30_000,
     testTimeout: 30_000,
   },

@@ -18,7 +18,10 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
   ...(authSecret ? { secret: authSecret } : {}),
   session: {
-    strategy: 'database',
+    // NextAuth's Credentials provider can only establish JWT sessions. The
+    // Prisma adapter remains available for the shared user model, but a
+    // database session strategy would make every credential sign-in fail.
+    strategy: 'jwt',
     maxAge: 60 * 60 * 8,
     updateAge: 60 * 30
   },
@@ -83,9 +86,9 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
       }
       return session;
     }
