@@ -6,6 +6,15 @@ const ALLOWED_DATABASE_NAMES = new Set(['apple333_test', 'apple333_e2e_test']);
 const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const FIXTURE_PREFIX = 'e2e-storefront-';
 
+// Public storefront mutations validate variant identifiers as CUIDs. Keep the
+// deterministic browser fixtures on the same identifier contract as products
+// created through the application.
+export const e2eStorefrontVariantIds = Object.freeze({
+  iphone16Pro: 'cmcy9c9xc000008l7a4tf7kg1',
+  iphone16: 'cmcy9c9xc000108l7a4tf7kg2',
+  airpodsPro: 'cmcy9c9xc000208l7a4tf7kg3',
+});
+
 /**
  * Validates environment strings before a Prisma client is created. The fixture
  * never accepts a remote, staging, shared, or production database target.
@@ -84,7 +93,7 @@ const products = [
     isNew: true,
     isOnSale: true,
     variant: {
-      id: `${FIXTURE_PREFIX}variant-iphone-16-pro`,
+      id: e2eStorefrontVariantIds.iphone16Pro,
       sku: 'E2E-IP16PRO-256-BLK',
       code: 'E2E-IP16PRO-256-BLK',
       title: '256GB Black',
@@ -108,7 +117,7 @@ const products = [
     isNew: true,
     isOnSale: false,
     variant: {
-      id: `${FIXTURE_PREFIX}variant-iphone-16`,
+      id: e2eStorefrontVariantIds.iphone16,
       sku: 'E2E-IP16-128-WHT',
       code: 'E2E-IP16-128-WHT',
       title: '128GB White',
@@ -132,7 +141,7 @@ const products = [
     isNew: false,
     isOnSale: true,
     variant: {
-      id: `${FIXTURE_PREFIX}variant-airpods-pro`,
+      id: e2eStorefrontVariantIds.airpodsPro,
       sku: 'E2E-AIRPODS-PRO-WHT',
       code: 'E2E-AIRPODS-PRO-WHT',
       title: 'White',

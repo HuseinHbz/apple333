@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateE2eStorefrontSeedEnvironment } from '../../scripts/seed-e2e-storefront.mjs';
+import { addCartItemInput } from '@/modules/cart/validators';
+
+import { e2eStorefrontVariantIds, validateE2eStorefrontSeedEnvironment } from '../../scripts/seed-e2e-storefront.mjs';
 
 const safeEnvironment = {
   NODE_ENV: 'test',
@@ -9,6 +11,12 @@ const safeEnvironment = {
 };
 
 describe('E2E storefront fixture environment guard', () => {
+  it('uses cart-eligible variant identifiers for browser fixtures', () => {
+    for (const variantId of Object.values(e2eStorefrontVariantIds)) {
+      expect(addCartItemInput.safeParse({ variantId, quantity: 1 }).success).toBe(true);
+    }
+  });
+
   it('accepts only an explicitly opted-in loopback test database', () => {
     expect(validateE2eStorefrontSeedEnvironment(safeEnvironment)).toEqual({ ok: true, errors: [] });
   });
