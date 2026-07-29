@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
+    "test:e2e:standard": "playwright test --grep-invert=\"Phase 06 inventory and multi-branch browser journeys\"",
     "test:deploy": "vitest run tests/unit/deploy-assets.test.ts",
     "pim:test:preflight": "node scripts/verify-pim-test-environment.mjs",
     "pim:test:migrate": "node scripts/run-pim-test-migrations.mjs",

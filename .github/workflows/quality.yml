@@ -182,7 +182,11 @@ jobs:
           set -Eeuo pipefail
           mkdir -p logs/e2e
           set +e
-          pnpm test:e2e 2>&1 | node scripts/sanitize-e2e-log.mjs
+          # The Phase 06 inventory suite has a separate guarded database,
+          # seed, and production-mode evidence workflow. Keep generic Quality
+          # limited to the standard storefront suite rather than weakening the
+          # inventory test environment boundary.
+          pnpm test:e2e:standard 2>&1 | node scripts/sanitize-e2e-log.mjs
           statuses=("${PIPESTATUS[@]}")
           set -e
           if [[ "${statuses[0]}" -ne 0 ]]; then

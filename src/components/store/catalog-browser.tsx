@@ -162,7 +162,7 @@ export function CatalogBrowser({ initialCategory = '', initialData }: { initialC
         {products.data && products.data.items.length === 0 ? <EmptyState title="محصولی پیدا نشد" description="فیلترها را تغییر دهید یا پس از انتشار محصولات، دوباره به کاتالوگ مراجعه کنید." /> : null}
         {products.data && products.data.items.length > 0 ? (
           <>
-            <p className="mb-4 text-sm text-zinc-500">{new Intl.NumberFormat('fa-IR').format(products.data.total)} محصول پیدا شد</p>
+            <p className="mb-4 text-sm text-zinc-600">{new Intl.NumberFormat('fa-IR').format(products.data.total)} محصول پیدا شد</p>
             <ProductGrid products={products.data.items} />
             {products.data.totalPages > 1 ? (
               <nav className="mt-8 flex items-center justify-center gap-3" aria-label="صفحه‌بندی محصولات">

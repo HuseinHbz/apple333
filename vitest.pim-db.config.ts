@@ -13,7 +13,7 @@ const rootDirectory = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/database/**/*.test.ts'],
+    include: ['tests/database/pim-persistence.test.ts'],
     hookTimeout: 30_000,
     testTimeout: 30_000,
   },

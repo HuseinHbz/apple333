@@ -21,7 +21,7 @@ export function ProductGallery({ product }: { product: PublicProductDto }) {
         ) : active ? (
           <Image src={active.url} alt={active.altText ?? product.name} fill sizes="(min-width: 1024px) 45vw, 100vw" className="object-contain p-6" priority />
         ) : (
-          <p className="max-w-56 text-center text-sm leading-7 text-zinc-400">تصویر محصول پس از ثبت در کاتالوگ نمایش داده می‌شود.</p>
+          <p className="max-w-56 text-center text-sm leading-7 text-zinc-600">تصویر محصول پس از ثبت در کاتالوگ نمایش داده می‌شود.</p>
         )}
       </div>
       {product.media.length > 1 ? (

@@ -18,7 +18,7 @@ export function StoreProductCard({ product }: { product: PublicProductCardDto })
           {product.heroMediaUrl ? (
             <Image src={product.heroMediaUrl} alt={product.name} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition duration-500 group-hover:scale-105" />
           ) : (
-            <div className="flex h-full items-center justify-center text-center text-sm font-semibold text-zinc-400">تصویر محصول پس از ثبت در کاتالوگ نمایش داده می‌شود</div>
+            <div className="flex h-full items-center justify-center text-center text-sm font-semibold text-zinc-600">تصویر محصول پس از ثبت در کاتالوگ نمایش داده می‌شود</div>
           )}
           <div className="absolute right-3 top-3 flex flex-wrap gap-2">
             {product.isNew ? <Badge tone="info">جدید</Badge> : null}
@@ -33,7 +33,7 @@ export function StoreProductCard({ product }: { product: PublicProductCardDto })
             <div>
               <p className="text-xs text-zinc-500">از</p>
               <p className="mt-1 text-sm font-black text-zinc-950">{formatRials(product.startingPriceRials)}</p>
-              {product.compareAtPriceRials ? <p className="mt-1 text-xs text-zinc-400 line-through">{formatRials(product.compareAtPriceRials)}</p> : null}
+              {product.compareAtPriceRials ? <p className="mt-1 text-xs text-zinc-600 line-through">{formatRials(product.compareAtPriceRials)}</p> : null}
             </div>
             <Badge tone={product.availability === 'IN_STOCK' ? 'success' : 'neutral'}>{product.availability === 'IN_STOCK' ? 'موجود' : 'ناموجود'}</Badge>
           </div>

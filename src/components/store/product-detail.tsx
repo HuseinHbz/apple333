@@ -97,7 +97,7 @@ function ProductDetailContent({ product, initialRelatedProducts }: { product: Pu
                     <div>
                       <p className="text-xs text-zinc-500">قیمت این مدل</p>
                       <p className="mt-1 text-xl font-black">{formatRials(selectedVariant.priceRials)}</p>
-                      {selectedVariant.compareAtPriceRials ? <p className="mt-1 text-xs text-zinc-400 line-through">{formatRials(selectedVariant.compareAtPriceRials)}</p> : null}
+                      {selectedVariant.compareAtPriceRials ? <p className="mt-1 text-xs text-zinc-600 line-through">{formatRials(selectedVariant.compareAtPriceRials)}</p> : null}
                     </div>
                     <Badge tone={selectedVariant.availability === 'IN_STOCK' ? 'success' : 'neutral'}>{selectedVariant.availability === 'IN_STOCK' ? 'موجود در شعب منتخب' : 'فعلاً ناموجود'}</Badge>
                   </div>
