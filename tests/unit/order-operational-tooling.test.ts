@@ -207,6 +207,16 @@ describe("Phase 07 operational tooling", () => {
     expect(workflow).toContain("pnpm order:reconcile --json");
   });
 
+  it("keeps the isolated order browser suite out of generic storefront E2E", () => {
+    const manifest = JSON.parse(
+      readFileSync(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as { scripts: Record<string, string> };
+    const standardE2e = manifest.scripts["test:e2e:standard"];
+
+    expect(standardE2e).toContain("07 order-management");
+    expect(standardE2e).toContain("--grep-invert");
+  });
+
   it("recognizes a coherent completed order without exposing or mutating PII", () => {
     const result = reconcileOrderRecords([
       {

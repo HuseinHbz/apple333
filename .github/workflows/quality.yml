@@ -185,10 +185,10 @@ jobs:
           set -Eeuo pipefail
           mkdir -p logs/e2e
           set +e
-          # The Phase 06 inventory suite has a separate guarded database,
-          # seed, and production-mode evidence workflow. Keep generic Quality
-          # limited to the standard storefront suite rather than weakening the
-          # inventory test environment boundary.
+          # The Phase 06 inventory and Phase 07 order suites have separate
+          # guarded databases, seeds, and production-mode evidence workflows.
+          # Keep generic Quality limited to the standard storefront suite
+          # rather than weakening either test-environment boundary.
           pnpm test:e2e:standard 2>&1 | node scripts/sanitize-e2e-log.mjs
           statuses=("${PIPESTATUS[@]}")
           set -e
