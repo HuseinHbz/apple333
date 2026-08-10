@@ -2,10 +2,10 @@
 
 ## Current decision
 
-**LOCAL CANDIDATE READY; DO NOT APPROVE YET.** All mandatory local static,
-PostgreSQL, browser, reconciliation, performance, and dependency gates pass.
-Approval is still blocked until the exact candidate commit passes GitHub
-Actions and the retained sanitized artifacts are reviewed.
+**APPROVED FOR PHASE 08 DEVELOPMENT.** All mandatory local and exact-commit
+static, PostgreSQL, browser, reconciliation, performance, dependency, CodeQL,
+and Gitleaks gates pass for `fe412ea87a88010721368e0cbc66cf20c8c1fd11`.
+Retained sanitized artifacts were reviewed. Final score: **9.8/10**.
 
 No production resource, credential, shared database, or deployment was used.
 
@@ -40,7 +40,7 @@ internal reuse marker is rejected if supplied by an operator.
 | Application types                  | `pnpm typecheck`                 | PASS                                |
 | Phase 07 tooling types             | `pnpm typecheck:phase-07-tests`  | PASS                                |
 | Lint                               | `pnpm lint`                      | PASS                                |
-| Unit tests                         | `pnpm test`                      | PASS - 64 files / 345 tests         |
+| Unit tests                         | `pnpm test`                      | PASS - 64 files / 346 tests         |
 | Integration tests                  | `pnpm test:integration`          | PASS - 10 files / 73 tests          |
 | PostgreSQL persistence/concurrency | `pnpm test:order-db`             | PASS - 2 files / 15 tests           |
 | Production build                   | `pnpm build`                     | PASS - 97 generated routes/pages    |
@@ -106,12 +106,29 @@ comparison. The query was fixed by casting the parameter to `OrderStatus`
 without casting the indexed column, regression coverage was added, and both
 scales were repeated successfully.
 
-## Remaining approval gate
+## Exact-commit GitHub evidence
 
-The workflow `.github/workflows/phase07-order-evidence.yml` must pass for the
-exact candidate commit. A normal push runs quality, disposable migration,
-database/concurrency, E2E, security, reconciliation, and 10k evidence. The 100k
-job must be explicitly dispatched for the same commit. Retained artifacts must
-then be reviewed for sanitization and completeness.
+| Evidence | Run | Result |
+| --- | ---: | --- |
+| Security workflow | `31378513172` | PASS: audit, CodeQL, Gitleaks |
+| General Quality workflow | `31378513183` | PASS: 26/26 standard browser tests |
+| Phase 07 push workflow | `31378513184` | PASS: 10k and all mandatory runtime jobs |
+| Explicit Phase 07 100k workflow | `31378864652` | PASS: 100k and all companion jobs |
 
-Until that evidence exists, Phase 08 remains blocked.
+The exact-commit 100k artifact recorded these p95 values: admin list 1.204 ms,
+customer list 1.018 ms, branch list 1.630 ms, detail 1.812 ms, search 0.605 ms,
+create persistence 29.657 ms, and confirm persistence 47.145 ms. All targets
+passed. Reconciliation checked 100,031 orders with zero drift. The separate DB
+artifact checked 11 orders and the E2E artifact checked two; both had zero
+drift. The standalone browser suite passed 8/8 in 15.5 seconds.
+
+Artifact digests and expiry metadata were verified. Automated content review
+found no repository token, private key, production domain, database/Redis URL,
+mobile number, or IMEI. A single card-like numeric pattern was reviewed and was
+the synthetic invalid-test order number `A33-DB-...-INVALID-TOTAL`, not payment
+or cardholder data.
+
+## Approval result
+
+All evidence required by the Phase 07 approval boundary exists and passed.
+Phase 08 is unblocked from `fe412ea`. Production rollout is still out of scope.

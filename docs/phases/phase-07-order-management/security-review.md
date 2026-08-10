@@ -2,8 +2,9 @@
 
 ## Decision
 
-**Local security/runtime controls pass; candidate-commit CI and artifact review
-are still required. Current decision: DO NOT APPROVE PHASE 07.**
+**APPROVED for Phase 08 development.** Local controls, exact-commit Security
+automation, and retained-artifact review pass for `fe412ea`. Final Phase 07
+engineering score: **9.8/10**.
 
 No production environment, credential, shared database, deployment, or runtime
 secret was accessed. The final production dependency audit reported zero Info,
@@ -39,13 +40,16 @@ Low, Moderate, High, or Critical findings.
 6. Phase 07 stores no cardholder data and performs no gateway settlement.
 7. Runtime tooling rejects production-like targets before database access.
 
-## Remaining approval blockers
+## Closed approval gates
 
-| Item                 | Required evidence                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| Exact candidate CI   | All Phase 07 GitHub Actions jobs green for the candidate commit.                                 |
-| Same-commit 100k run | Explicit workflow dispatch with the 100k benchmark enabled.                                      |
-| Security automation  | Candidate Gitleaks/CodeQL/dependency evidence green where configured.                            |
-| Artifact review      | Human review confirms retained logs/reports contain no secrets, PII, or full device identifiers. |
+| Item                 | Evidence |
+| -------------------- | -------- |
+| Exact candidate CI   | Runs `31378513183` and `31378513184` green for `fe412ea`. |
+| Same-commit 100k run | Explicit dispatch `31378864652` passed with zero reconciliation drift. |
+| Security automation  | Run `31378513172`: production audit, CodeQL, and Gitleaks pass. |
+| Artifact review      | Retained reports reviewed; no secrets, production URLs, customer PII, or device identifiers found. |
 
-No numerical score can override one of these mandatory gates.
+No security exception or numerical override was used. The only non-blocking CI
+observation is GitHub's warning that pinned actions targeting Node 20 are being
+forced onto Node 24; action-version maintenance is recommended before GitHub
+removes compatibility.

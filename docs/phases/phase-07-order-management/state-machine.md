@@ -76,5 +76,5 @@ request hash. Identical retries replay the durable outcome; changed input with
 the same key fails with `ORDER_IDEMPOTENCY_CONFLICT`. Serializable transactions
 and conditional version updates prevent duplicate orders, lost updates,
 final-stock overselling, and duplicate tracked-device allocation. Real
-PostgreSQL verification of those properties remains pending in CI/runtime
-evidence.
+PostgreSQL persistence and concurrency verification passed locally and in
+exact-commit CI runs `31378513184` and `31378864652`.

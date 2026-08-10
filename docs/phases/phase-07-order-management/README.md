@@ -2,9 +2,8 @@
 
 ## Status
 
-**Local implementation candidate is complete. Final approval remains blocked
-until the exact candidate commit has green GitHub Actions evidence and retained
-artifacts are reviewed.**
+**APPROVED for Phase 08 development at `fe412ea` with an engineering score of
+9.8/10.** Exact-commit GitHub Actions and retained artifacts were reviewed.
 
 No production database, credential, deployment, or shared runtime was accessed.
 All database, browser, reconciliation, and benchmark evidence recorded here was
@@ -56,7 +55,7 @@ production expiry scheduler are out of scope.
 
 ## Evidence summary
 
-- Unit: 64 files / 345 tests passed.
+- Unit: 64 files / 346 tests passed.
 - Integration: 10 files / 73 tests passed.
 - Real PostgreSQL: 2 files / 15 tests passed.
 - Standalone Playwright/Axe: 8 / 8 scenarios passed.
@@ -65,6 +64,7 @@ production expiry scheduler are out of scope.
 - Production dependency audit: zero findings at every severity.
 - Type checks, lint, Prisma validation/generation, and production build passed.
 
-The exact numbers and evidence boundaries are in `runtime-evidence.md`. The
-phase remains **DO NOT APPROVE** until the same candidate commit passes GitHub
-Actions, including the explicitly dispatched 100k job, and artifact review.
+The exact numbers and evidence boundaries are in `runtime-evidence.md`.
+Security (`31378513172`), Quality (`31378513183`), Phase 07 push evidence
+(`31378513184`), and explicit 100k evidence (`31378864652`) passed for the
+approved commit. This approval does not authorize production deployment.
