@@ -1225,6 +1225,19 @@ async function persistNewOrder(
   if (transitioned.count !== 1)
     orderError("ORDER_VERSION_CONFLICT", 409, "سفارش هم‌زمان تغییر کرده است.");
   const version = created.version + 1;
+  // Preserve the Phase 07 financial projection consumed by existing order
+  // views. It is an explicitly unpaid compatibility snapshot; the canonical
+  // Phase 08 Payment aggregate is still the sole authority for gateway state.
+  await transaction.orderPayment.create({
+    data: {
+      orderId: created.id,
+      provider: "PHASE_08_PENDING",
+      method: "MANUAL_REVIEW",
+      amountRials: pricing.grandTotalRials,
+      status: "UNPAID",
+      idempotencyKey: `order-payment-placeholder:${created.id}`,
+    },
+  });
   await writeStatusHistory(transaction, {
     orderId: created.id,
     fromStatus: "DRAFT",
