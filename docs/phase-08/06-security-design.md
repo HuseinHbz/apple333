@@ -11,8 +11,18 @@
 - Durable PostgreSQL idempotency protects financial operations across restarts;
   Redis may not be the financial source of truth.
 - Same-origin checks protect browser mutations. Provider callbacks use
-  signature/replay controls instead of browser-origin checks.
-- Provider calls use explicit connect/response timeouts and bounded retry.
+  signature/replay controls and a bounded callback rate limit instead of
+  browser-origin checks.
+- The simulator fails closed in normal production runtime before any Payment
+  mutation. Its production-artifact exception requires all disposable E2E
+  markers plus the exact loopback Phase 08 database identity.
+- Provider execution enforces an abort signal, a configurable response timeout
+  clamped to 30 seconds, and at most two attempts for read-only or
+  provider-idempotent operations. The simulator exposes timeout/network-retry
+  outcomes as canonical errors.
+- Provider results are runtime-checked for canonical status, money, currency,
+  references, expiry and safe HTTP(S) redirects before persistence or browser
+  exposure.
 - Logs contain request ID, payment/order IDs, provider, operation, result, and
   duration only; no secret, raw callback, token, card data, or full PII.
 - Customer ownership, branch scope, and dedicated financial permissions are

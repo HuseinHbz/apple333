@@ -62,3 +62,25 @@ Before production adoption, rollback means disabling Phase 08 routes/workers
 and leaving additive evidence tables intact. Destructive rollback SQL will not
 be generated. A later archival/removal decision requires a separately approved
 data-retention migration.
+
+## Disposable activation evidence
+
+The reviewed migration is
+`20260810000000_phase_08_payment_orchestration`. The following operations were
+performed only against the loopback PostgreSQL target named
+`apple333_phase08_payment_test` on port `55435`:
+
+- `prisma validate` and Prisma Client generation: passed;
+- preflight identity and environment guard: passed;
+- first additive migration application: passed;
+- second migration invocation: reported no pending migration and made no
+  duplicate schema change;
+- schema inspector: found all expected owned tables, indexes, constraints, and
+  the append-only `PaymentTransaction` trigger;
+- real persistence and concurrency suites: passed; and
+- post-benchmark reconciliation of 110,021 Payments: zero mismatch.
+
+The SQL contains no `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`, legacy data update,
+or destructive alteration. No production, staging, shared, or unknown database
+was contacted. This evidence is not production migration approval; the deploy
+gate remains blocked in `deploy/RELEASE-GATES.md`.

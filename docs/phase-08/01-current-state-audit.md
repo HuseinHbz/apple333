@@ -13,18 +13,18 @@ accessed during this audit.
 
 ## Existing payment-related implementation
 
-| Area | Existing behavior | Phase 08 decision |
-| --- | --- | --- |
-| `Order.paymentStatus` | OMS projection using `OrderPaymentStatus`. | Keep as an order-owned summary; update only after canonical Payment verification. |
-| `OrderPayment` | Phase 07 legacy metadata/placeholder table. | Preserve additively for historical compatibility; do not use as the Phase 08 aggregate. |
-| Order creation | Writes an `UNPAID`, `PHASE_08_PENDING` placeholder. | Stop creating new placeholders after Payment activation; do not rewrite old rows. |
-| Admin payment route | `/api/admin/orders/[id]/payment` can record `PAID` manually. | Retire the mutation from operational use; verified Payment service becomes the only PAID authority. |
-| Checkout | Creates an order and reaches an order-success shell. | Add canonical payment creation, initialization, simulator redirect, and return state. |
-| Order outbox | Atomic order events exist. | Keep order outbox ownership; add a separate Payment outbox and atomically emit `order.payment_completed` after verification. |
-| Idempotency | Durable OMS command records exist. | Add Payment-scoped durable idempotency records; do not reuse OMS scopes. |
-| Audit | Generic `AuditLog` and order history exist. | Reuse redacted audit logging with Payment entity identifiers only. |
-| Security | Same-origin checks, bounded rate limiting, request IDs, Zod, safe envelopes, RBAC. | Reuse and strengthen for hostile callbacks, signature validation, replay prevention, and timeout/retry bounds. |
-| Redis | Health-checked cache abstraction exists. | Use only for non-authoritative transient controls; financial idempotency remains PostgreSQL-backed. |
+| Area                  | Existing behavior                                                                  | Phase 08 decision                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `Order.paymentStatus` | OMS projection using `OrderPaymentStatus`.                                         | Keep as an order-owned summary; update only after canonical Payment verification.                                            |
+| `OrderPayment`        | Phase 07 legacy metadata/placeholder table.                                        | Preserve additively for historical compatibility; do not use as the Phase 08 aggregate.                                      |
+| Order creation        | Writes an `UNPAID`, `PHASE_08_PENDING` placeholder.                                | Stop creating new placeholders after Payment activation; do not rewrite old rows.                                            |
+| Admin payment route   | `/api/admin/orders/[id]/payment` can record `PAID` manually.                       | Retire the mutation from operational use; verified Payment service becomes the only PAID authority.                          |
+| Checkout              | Creates an order and reaches an order-success shell.                               | Add canonical payment creation, initialization, simulator redirect, and return state.                                        |
+| Order outbox          | Atomic order events exist.                                                         | Keep order outbox ownership; add a separate Payment outbox and atomically emit `order.payment_completed` after verification. |
+| Idempotency           | Durable OMS command records exist.                                                 | Add Payment-scoped durable idempotency records; do not reuse OMS scopes.                                                     |
+| Audit                 | Generic `AuditLog` and order history exist.                                        | Reuse redacted audit logging with Payment entity identifiers only.                                                           |
+| Security              | Same-origin checks, bounded rate limiting, request IDs, Zod, safe envelopes, RBAC. | Reuse and strengthen for hostile callbacks, signature validation, replay prevention, and timeout/retry bounds.               |
+| Redis                 | Health-checked cache abstraction exists.                                           | Use only for non-authoritative transient controls; financial idempotency remains PostgreSQL-backed.                          |
 
 ## Reusable components and patterns
 
@@ -77,12 +77,12 @@ accessed during this audit.
 
 ## Audit risks
 
-| Risk | Control |
-| --- | --- |
-| Double payment or duplicate callback | PostgreSQL uniqueness, row locking, optimistic version, durable request hashes. |
-| Browser amount tampering | Amount/currency absent from create/init inputs; persisted Order snapshot is authoritative. |
-| Provider false success | Server-to-server verification and exact amount/currency/reference match required. |
-| Cross-customer/branch data exposure | Ownership query and dedicated payment permission projections. |
-| Legacy manual PAID path | Deprecate route and remove UI access; regression test that it cannot complete payment. |
-| Migration damage | Additive-only SQL, reviewed before apply, disposable PostgreSQL first. |
-| Secret/card leakage | HMAC secret only in environment, payload hashes only, prohibited-field artifact scan. |
+| Risk                                 | Control                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Double payment or duplicate callback | PostgreSQL uniqueness, row locking, optimistic version, durable request hashes.            |
+| Browser amount tampering             | Amount/currency absent from create/init inputs; persisted Order snapshot is authoritative. |
+| Provider false success               | Server-to-server verification and exact amount/currency/reference match required.          |
+| Cross-customer/branch data exposure  | Ownership query and dedicated payment permission projections.                              |
+| Legacy manual PAID path              | Deprecate route and remove UI access; regression test that it cannot complete payment.     |
+| Migration damage                     | Additive-only SQL, reviewed before apply, disposable PostgreSQL first.                     |
+| Secret/card leakage                  | HMAC secret only in environment, payload hashes only, prohibited-field artifact scan.      |

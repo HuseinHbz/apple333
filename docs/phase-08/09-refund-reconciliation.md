@@ -5,8 +5,9 @@ reason, and an idempotency key. The sum of pending/successful refunds may not
 exceed the captured Payment amount. This phase records orchestration evidence
 only; it creates no accounting or general-ledger entries.
 
-`pnpm payment:reconcile` is read-only by default. It compares internal and
-simulator/provider state for:
+`pnpm payment:reconcile` never performs automatic repair or changes a Payment
+status. It queries both states and appends immutable reconciliation evidence in
+the guarded disposable environment. It compares:
 
 - internal PAID/provider not paid;
 - provider paid/internal not PAID;
