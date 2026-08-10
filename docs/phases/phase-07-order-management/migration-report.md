@@ -1,6 +1,7 @@
 # Phase 07 Migration Report
 
-**Prepared before any Phase 07 schema modification.**
+**State: implemented and statically validated; not applied locally or to any
+production/shared database.**
 
 ## Safety declaration
 
@@ -14,7 +15,7 @@
 
 ## Existing schema dependencies
 
-Phase 07 will reference, but not alter the semantics of:
+Phase 07 references, without reclassifying existing records:
 
 - `User`, `Address`, `CatalogProduct`, `CatalogVariant`, and `ProductSku` for
   immutable snapshots and historical references.
@@ -23,64 +24,66 @@ Phase 07 will reference, but not alter the semantics of:
 - `StorefrontCart` and `StorefrontCartItem` for checkout conversion.
 - `AuditLog` for correlated, redacted audit evidence.
 
-## Planned additive database objects
+## Implemented additive database objects
 
-The reviewed migration will introduce the following enums and tables:
+`prisma/migrations/20260729000000_phase_07_order_management/migration.sql`
+introduces the following additive objects:
 
 - `OrderSource`, `OrderType`, `OrderStatus`, `OrderPaymentStatus`,
   `OrderAllocationStatus`, `OrderFulfillmentStatus`, `OrderFulfillmentMethod`,
-  `OrderNoteVisibility`, and `OrderEventStatus`.
+  `OrderNoteVisibility`, `OrderActorType`, `OrderEventStatus`, and
+  `OrderDeviceAssignmentStatus`.
 - `Order` with immutable customer/address snapshots, server-calculated integer
-  totals, status dimensions, a positive optimistic `version`, and a unique
-  external order number.
-- `OrderItem` with immutable product/variant/SKU/warranty/attributes snapshots
-  and positive quantity/monetary checks.
-- `OrderAllocation` linked to one `OrderItem`, branch/warehouse, and an
-  `InventoryReservation`.
-- `OrderPayment`, `OrderFulfillment`, `OrderStatusHistory`, and `OrderNote`.
-- `OrderIdempotencyRecord` with unique `(scope, key)` and a request hash.
-- `OrderOutboxEvent` for transactional domain events.
+  totals, status dimensions, optimistic `version`, and a unique order number.
+- `OrderItem` with immutable product/variant/SKU/warranty/attributes snapshots.
+- `OrderAllocation` linked to an order item, branch/warehouse, inventory item,
+  and `InventoryReservation`.
+- `OrderPayment`, `OrderFulfillment`, `OrderStatusHistory`, `OrderNote`,
+  `OrderIdempotencyRecord`, and `OrderOutboxEvent`.
+- `OrderDeviceAssignment`, which durably links a tracked `DeviceUnit` to an
+  order, item, allocation, and reservation with IMEI/serial snapshots and
+  `RESERVED`, `RELEASED`, or `FULFILLED` evidence state.
+
+The migration also adds `StockMovementType.SALE_FULFILLED`,
+`StorefrontCartItem.unitPriceRials`, `UserProfile.passwordHash`, audit-log
+snapshot/actor/reason columns, and `OrderOutboxEvent.occurredAt`. It does not
+edit an existing migration.
 
 ## Integrity constraints and indexes
 
-The migration must provide at least:
+The reviewed SQL provides:
 
 - a unique `Order.orderNumber`;
-- a unique idempotency `(scope, key)` pair;
+- a unique `(scope, key)` order-idempotency pair;
 - unique non-null payment provider references;
-- check constraints for positive item/allocation quantities and non-negative
-  order money components;
-- database foreign keys with `RESTRICT` or safe `SET NULL` deletion behavior;
-- indexes for customer history, each lifecycle status plus creation time,
-  source plus creation time, allocations, fulfillment, and timeline reads;
-- an active allocation/reservation uniqueness constraint where PostgreSQL can
-  express it safely via a partial index.
+- checks for positive item/allocation quantities and non-negative money
+  components;
+- foreign keys with `RESTRICT`, `SET NULL`, or aggregate-safe `CASCADE`
+  behavior;
+- indexes for customer history, lifecycle/status searches, source, timeline,
+  allocation/fulfillment lookups, and standalone `Order.createdAt` ordering;
+- a partial unique index preventing one active tracked-device assignment
+  (`RESERVED`) from being claimed by multiple orders, while allowing a released
+  unit to be assigned later.
 
-## Compatibility choices
+## Validation record and deployment plan
 
-`CatalogVariant.priceRials` and `ProductSku.priceRials` already use `BigInt`.
-Phase 07 will preserve this integer IRR convention for all order values. It
-will not introduce floating-point arithmetic or convert prior catalog data.
+- `pnpm prisma:validate`: passed locally after the schema edit.
+- `pnpm prisma:generate`: passed locally after the schema edit.
+- SQL review: additive-only; no `DROP`, `TRUNCATE`, reset, or existing-migration
+  rewrite is present.
+- Application: **not run locally**, because the guarded disposable Docker
+  PostgreSQL environment is unavailable on this workstation.
 
-The order-to-inventory relation is additive: `InventoryReservation.reference`
-continues to be the existing inventory-domain correlation field while
-`OrderAllocation.reservationId` becomes the typed OMS ownership link. Existing
-inventory records are neither reclassified nor modified.
-
-## Validation and deployment plan
-
-1. Run `pnpm prisma:validate` and `pnpm prisma:generate` after the schema
-   edit.
-2. Review the SQL migration for additive-only behavior.
-3. Run it only through the Phase 07 disposable database preflight/migrate
-   scripts.
-4. Run persistence, concurrency, reconciliation, build, and E2E tests.
-5. Preserve CI migration logs and database identity evidence without secrets.
+Before any deployment, run only through the Phase 07 guarded preflight/migrate
+scripts against an owned, disposable database. Preserve CI migration logs and
+sanitized database-identity metadata. Static Prisma validation is not proof
+that the migration applies to PostgreSQL.
 
 ## Rollback and forward-fix policy
 
 An approved production migration is not rolled back through destructive table
-or enum removal. If a defect is found, a new additive forward-fix migration is
-created. Before a production deployment, operators must take a verified backup
-and confirm the target schema belongs to Apple333; otherwise the deploy tooling
-must stop and request approval.
+or enum removal. If a defect is found, create a reviewed additive forward-fix
+migration. Before a production deployment, operators must take a verified
+backup and confirm the target schema belongs to Apple333; otherwise deployment
+tooling must stop and request approval.

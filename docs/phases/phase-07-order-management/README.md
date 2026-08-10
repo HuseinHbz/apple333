@@ -1,68 +1,70 @@
-# Phase 07 — Order Management System
+# Phase 07 - Order Management System
 
 ## Status
 
-Implementation is in progress. This document is intentionally kept factual: an
-item is marked as delivered only after its dedicated test and runtime evidence
-are available.
+**Local implementation candidate is complete. Final approval remains blocked
+until the exact candidate commit has green GitHub Actions evidence and retained
+artifacts are reviewed.**
+
+No production database, credential, deployment, or shared runtime was accessed.
+All database, browser, reconciliation, and benchmark evidence recorded here was
+created against the label-owned disposable Phase 07 PostgreSQL environment.
 
 ## Repository baseline
 
-The requested baseline branch was named `main`, but this repository uses
-`master` and the approved Phase 06 capabilities have not been flattened into
-that branch. The Phase 07 branch was therefore created from the approved
-`feature/phase-06.1.1-inventory-production-approval-closure` head. This keeps
-the Inventory, PIM, cart, RBAC, audit, and CI prerequisites available without
-rewriting history or merging unrelated local worktree changes.
+The repository default branch is `master`, not `main`. This work is isolated on
+`feature/phase-07-order-management`, created from the approved Phase 06.1.1
+candidate without rewriting history. Unrelated local deployment, Phase 02, and
+shared-infrastructure changes remain outside the Phase 07 candidate scope.
 
-## Scope
+## Delivered scope
 
-Phase 07 establishes the transactional order aggregate used by storefront,
-admin-assisted, and branch-compatible sales. It includes immutable commercial
-snapshots, server-side totals, inventory reservations and allocations, order
-state transitions, idempotency, audit records, an outbox, administrative order
-operations, customer order views, and disposable runtime evidence.
+Phase 07 provides the transactional Order aggregate for authenticated
+storefront customers, admin-assisted sales, and branch-scoped operations. It
+includes:
 
-Payment gateway settlement, courier integrations, accounting postings,
-installment processing, and advanced returns remain explicitly out of scope.
+- immutable commercial, customer, and address snapshots;
+- server-authoritative integer IRR pricing;
+- inventory reservation, allocation, release, consumption, and durable tracked
+  device assignment evidence;
+- explicit order, payment-metadata, and fulfillment state transitions;
+- optimistic concurrency, durable idempotency, audit history, and transactional
+  outbox events;
+- ownership-, branch-, and permission-scoped APIs and projections;
+- storefront and admin order surfaces;
+- additive-only Prisma migration and guarded disposable PostgreSQL tooling;
+- database/concurrency, E2E/Axe, reconciliation, and 10k/100k benchmark evidence.
 
-## Existing integration points
+Payment-gateway settlement, refunds, courier integration, accounting,
+installment processing, advanced returns, a production outbox publisher, and a
+production expiry scheduler are out of scope.
 
-- Storefront cart and quote: `src/server/services/storefront-cart-service.ts`
-- Guest cart identity: `src/server/storefront/guest-cart.ts`
-- Inventory reservations: `src/server/services/inventory-service.ts`
-- Serializable inventory repository operations:
-  `src/server/repositories/inventory-repository.ts`
-- Administration route envelope and CSRF/rate-limit controls:
-  `src/server/admin/route.ts`
-- Storefront route envelope and controls: `src/server/storefront/route.ts`
-- Session and RBAC actor resolution: `src/modules/auth/session.ts` and
-  `src/server/security/permissions.ts`
-- Existing audit trail: `src/server/repositories/audit-log-repository.ts`
+## Core boundaries
 
-## Architectural boundaries
+1. The Order aggregate is the only authority for lifecycle and commercial
+   snapshot persistence.
+2. Browser-provided totals are never trusted; money is stored as integer IRR
+   values and never calculated with JavaScript floating point.
+3. Inventory remains the source of truth for physical availability.
+4. Sensitive commands are actor-scoped, idempotent, version-protected, audited,
+   and coupled atomically to outbox evidence.
+5. Customer projections omit internal notes, allocation internals, complete
+   IMEIs/serials, and provider references. Administrative finance, PII, and
+   device fields have separate permissions.
+6. `OrderDeviceAssignment` preserves device history after release or
+   fulfillment.
 
-1. The Order aggregate is the only authority for order status and commercial
-   snapshot persistence. Route handlers and UI never write order statuses
-   directly.
-2. Catalog prices are read and calculated only on the server. All persisted
-   monetary values are integer IRR minor units (`BigInt`), never JavaScript
-   floating-point values.
-3. Inventory remains the source of truth for physical availability. Orders use
-   its transactional reservation rules and retain a one-to-one auditable link
-   from each allocation to its reservation.
-4. Every state-changing command is actor-scoped, idempotent, optimistic-lock
-   protected, audited, and emits a transactional outbox event.
-5. Public projections never expose internal notes, operational metadata, full
-   IMEIs, payment provider internals, or a different customer's orders.
+## Evidence summary
 
-## Delivery sequence
+- Unit: 64 files / 344 tests passed.
+- Integration: 10 files / 73 tests passed.
+- Real PostgreSQL: 2 files / 15 tests passed.
+- Standalone Playwright/Axe: 8 / 8 scenarios passed.
+- Reconciliation: 120,146 orders checked, zero drift.
+- 10k and 100k PostgreSQL benchmark gates passed well below their p95 targets.
+- Production dependency audit: zero findings at every severity.
+- Type checks, lint, Prisma validation/generation, and production build passed.
 
-1. Repository and integration audit
-2. Domain, state machine, contracts, and migration review
-3. Additive Prisma migration and transactional services
-4. Storefront and admin API/UI integration
-5. Disposable database, E2E, reconciliation, benchmark, and CI evidence
-6. Final review and approval report
-
-See the sibling documents for the current design contracts and evidence.
+The exact numbers and evidence boundaries are in `runtime-evidence.md`. The
+phase remains **DO NOT APPROVE** until the same candidate commit passes GitHub
+Actions, including the explicitly dispatched 100k job, and artifact review.

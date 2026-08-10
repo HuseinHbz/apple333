@@ -1,44 +1,61 @@
 # Phase 07 Inventory Integration
 
-## Source of truth
+## Source of truth and transaction boundary
 
-`InventoryItem` and `DeviceUnit` are canonical. `BranchInventory` is a
-sellable projection and may be used to guide a storefront quote but never to
-approve an order allocation.
-
-## Transaction boundary
+`InventoryItem` and `DeviceUnit` remain canonical. `BranchInventory` may guide
+availability display but never authorizes an OMS allocation on its own.
 
 ```text
-validate cart + snapshot
-  → choose one eligible branch (SINGLE_BRANCH_FIRST)
-  → reserve canonical InventoryItem rows
-  → reserve tracked DeviceUnit rows when required
-  → create Order, items, allocations, history, audit, outbox
-  → mark source cart converted
-  → synchronize BranchInventory projection
+validated cart/admin intent
+  -> server pricing and immutable snapshots
+  -> choose one eligible branch
+  -> reserve InventoryItem and (when tracked) DeviceUnit rows
+  -> persist Order, items, allocations, device assignments, history, audit, outbox
+  -> mark source cart converted / revalidate storefront inventory
 ```
 
-The complete sequence runs in one serializable PostgreSQL transaction. Existing
-Phase 06 standalone reservation HTTP/API flows remain available; Phase 07 uses
-transaction-aware inventory primitives so an order cannot commit without its
-reservation and an outbox event cannot exist without its aggregate change.
+Creation, allocation, reservation, audit, history, and outbox work run in the
+same serializable PostgreSQL transaction. A committed order cannot exist
+without its required reservation/allocation evidence.
 
 ## Allocation policy
 
 1. Pickup uses the selected active pickup branch.
-2. Delivery selects the first active branch that can satisfy every line.
-3. A branch allocation must be complete for every order line in v1.
-4. Cross-branch/split allocations are feature-flagged off; no implicit split
-   is performed.
-5. Tracked SKUs select server-side `AVAILABLE` device units from the chosen
-   inventory item. Full IMEI/serial values remain internal.
+2. Delivery chooses an active branch that can satisfy every line.
+3. Version 1 is complete single-branch allocation; implicit split allocation
+   is not enabled.
+4. An admin/branch actor is checked against the target allocation branch before
+   a new order or inventory reservation is written.
+5. Tracked SKUs choose server-side available `DeviceUnit` rows for the selected
+   inventory item. Client-provided IMEI/serial values are never trusted.
+
+## Durable tracked-device evidence
+
+Each tracked reservation creates `OrderDeviceAssignment` rows connected to the
+order, item, allocation, reservation, and `DeviceUnit`. The assignment stores
+an IMEI/serial snapshot and is retained after release or fulfillment:
+
+| Inventory outcome        | Device unit | Assignment outcome |
+| ------------------------ | ----------- | ------------------ |
+| Active order reservation | Reserved    | `RESERVED`         |
+| Cancellation or expiry   | Available   | `RELEASED`         |
+| Delivered fulfillment    | Sold        | `FULFILLED`        |
+
+The active-assignment partial unique index is designed to prevent a single
+tracked unit from being reserved for two active orders. Full IMEI/serial values
+are returned only with `orders.view_imei`.
 
 ## Release and consumption
 
-- Cancellation releases active reservations, reserved balances, and tracked
-  device units; it writes an inverse reservation movement and reconciles the
-  branch projection.
-- Terminal fulfillment consumes the reservation, reduces physical quantity,
-  marks device units `SOLD`, and synchronizes the projection.
-- Expiration/reconciliation tooling runs only in the disposable test
-  environment until a separately approved production worker exists.
+- Cancellation and expiry release active inventory reservations, return tracked
+  device units, mark assignments `RELEASED`, and create inverse reservation
+  movements.
+- Delivered fulfillment consumes the reservation (`FULFILLED` in the Phase 06
+  inventory enum), records `SALE_FULFILLED`, marks device units sold, and marks
+  assignments `FULFILLED`.
+- Reconciliation checks allocation/reservation linkage, tracked-assignment
+  quantity/status, released-allocation consistency, and fulfillment drift. It
+  is read-only.
+
+The expiry command is callable for guarded test/operations use. A recurring
+production worker remains outside Phase 07 and requires separate approval.
