@@ -35,6 +35,9 @@ The final local gate run produced:
 - dedicated integration suite: 11 files / 79 tests;
 - payment database suite: 2 files / 12 tests;
 - payment E2E suite: 10 scenarios;
+- Phase 07 Order database regression: 2 files / 15 tests;
+- Phase 07 Order production-artifact E2E regression: 8 scenarios;
+- Phase 06 Inventory production-artifact E2E regression: 22 scenarios;
 - production build: passed;
 - Prisma migration application and repeated no-op invocation: passed; and
 - production dependency audit: no known vulnerabilities.
@@ -44,6 +47,31 @@ The initial database concurrency run exposed unhandled raw-query SQLSTATE
 rerun successfully. Two E2E failures exposed a corrupted locator and a missing
 wait for asynchronous server verification; both test defects were corrected
 without weakening application assertions, and all 10 journeys then passed.
+
+## GitHub remediation evidence
+
+The first GitHub runs were not hidden or marked non-blocking:
+
+- Gitleaks reported two deterministic test fixtures. Exact historical
+  fingerprints were recorded in `.gitleaksignore`; the final push and PR
+  history scans passed.
+- Dependency Review initially reported that Dependency Graph was disabled.
+  The graph and alerts were enabled through the official GitHub repository
+  endpoint, the compare endpoint returned `200`, and the rerun plus final head
+  run passed.
+- The Phase 07 database regression exposed removal of its unpaid compatibility
+  projection. The projection was restored without making it authoritative for
+  gateway state, and all 15 database tests passed locally and in GitHub.
+- Legacy Order E2E expected the now-disabled manual paid mutation to succeed.
+  It now proves the required `410` fail-closed response while the dedicated
+  Phase 08 suite proves canonical payment completion.
+- Inventory E2E expected a no-permission login to remain on the protected page.
+  It now asserts the authorization redirect while retaining API-level `403`
+  evidence. The unbound Branch Manager remains page-authenticated but all
+  branch-dependent APIs fail closed.
+
+The final GitHub evidence head passed Payment, Quality, Security, Order, and
+Inventory workflows without failed or pending checks.
 
 ## Integrity assertions
 

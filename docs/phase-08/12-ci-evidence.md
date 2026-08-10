@@ -36,7 +36,37 @@ production dependency findings.
 
 ## Current status
 
-All mandatory local evidence is green. GitHub Actions evidence is pending the first push of
-this branch. Phase 08 must remain **NOT APPROVED** until all mandatory Phase 08
-jobs and the repository security checks complete successfully. Run URLs and
-conclusions will be recorded here without rewriting or fabricating evidence.
+All mandatory local and GitHub-hosted evidence is green for evidence head
+`9c9274efc0eb0da98ba497aca99862d15f3c0d5d`.
+
+Draft PR: [#15](https://github.com/HuseinHbz/apple333/pull/15), targeting
+`feature/phase-07-order-management` from
+`feature/phase-08-payment-financial-orchestration`.
+
+| Workflow | Event | Conclusion | Evidence |
+| --- | --- | --- | --- |
+| Phase 08 Payment Evidence | pull_request | success | [run 31393598128](https://github.com/HuseinHbz/apple333/actions/runs/31393598128) |
+| Security | pull_request | success | [run 31393597974](https://github.com/HuseinHbz/apple333/actions/runs/31393597974) |
+| Quality | pull_request | success | [run 31393597971](https://github.com/HuseinHbz/apple333/actions/runs/31393597971) |
+| Phase 07 Order Management Evidence | pull_request | success | [run 31393598173](https://github.com/HuseinHbz/apple333/actions/runs/31393598173) |
+| Phase 06.1.1 inventory production-approval evidence | pull_request | success | [run 31393597966](https://github.com/HuseinHbz/apple333/actions/runs/31393597966) |
+
+The Phase 08 run passed Quality, Payment Migration, Payment Database Tests,
+Payment Concurrency, Payment E2E, Security, Reconciliation, 10k Benchmark,
+100k Benchmark, Artifact Upload, and Cleanup. The repository Security run
+passed Dependency Review, production dependency audit, Gitleaks history scan,
+and CodeQL. The Phase 07 and Phase 06.1.1 regression workflows also passed,
+including their production-artifact browser evidence.
+
+GitHub Dependency Graph and dependency alerts were enabled through the official
+repository API after the first Dependency Review attempt reported that the
+graph was disabled. The compare API then returned `200`, and the rerun plus the
+final head run passed. No check was skipped, suppressed, or converted to a
+non-blocking result.
+
+GitHub separately reported 41 Dependabot alerts on the repository default
+branch at push time (4 critical, 20 high, and 17 moderate). The Phase 08
+lockfile and PR diff passed Dependency Review, and the tested production
+dependency tree reported no known vulnerability. Default-branch alert
+remediation remains a repository maintenance item and does not authorize
+production payment activation.
