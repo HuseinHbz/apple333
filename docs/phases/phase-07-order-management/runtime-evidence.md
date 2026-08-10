@@ -40,7 +40,7 @@ internal reuse marker is rejected if supplied by an operator.
 | Application types                  | `pnpm typecheck`                 | PASS                                |
 | Phase 07 tooling types             | `pnpm typecheck:phase-07-tests`  | PASS                                |
 | Lint                               | `pnpm lint`                      | PASS                                |
-| Unit tests                         | `pnpm test`                      | PASS - 64 files / 344 tests         |
+| Unit tests                         | `pnpm test`                      | PASS - 64 files / 345 tests         |
 | Integration tests                  | `pnpm test:integration`          | PASS - 10 files / 73 tests          |
 | PostgreSQL persistence/concurrency | `pnpm test:order-db`             | PASS - 2 files / 15 tests           |
 | Production build                   | `pnpm build`                     | PASS - 97 generated routes/pages    |

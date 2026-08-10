@@ -56,7 +56,7 @@ production expiry scheduler are out of scope.
 
 ## Evidence summary
 
-- Unit: 64 files / 344 tests passed.
+- Unit: 64 files / 345 tests passed.
 - Integration: 10 files / 73 tests passed.
 - Real PostgreSQL: 2 files / 15 tests passed.
 - Standalone Playwright/Axe: 8 / 8 scenarios passed.
