@@ -6,9 +6,10 @@ file, or a state file cannot authorize a blocked database operation.
 
 ## Current gates
 
-| Gate | Status | Enforced by | Reason |
-| --- | --- | --- | --- |
-| Phase 04.1 PIM initial baseline (`20260713000000_phase_04_1_pim_activation`) | **BLOCKED** | `deploy/bin/lib.sh` | The migration is an add-only baseline only for pristine isolated test/CI PostgreSQL. It has no production, shared-database, legacy-adoption, or populated-schema authority. |
+| Gate                                                                             | Status      | Enforced by                                                   | Reason                                                                                                                                                                      |
+| -------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 04.1 PIM initial baseline (`20260713000000_phase_04_1_pim_activation`)     | **BLOCKED** | `deploy/bin/lib.sh`                                           | The migration is an add-only baseline only for pristine isolated test/CI PostgreSQL. It has no production, shared-database, legacy-adoption, or populated-schema authority. |
+| Phase 08 payment orchestration (`20260810000000_phase_08_payment_orchestration`) | **BLOCKED** | Existing Phase 04.1 global migration gate plus release review | The additive migration and simulator are approved only for labelled disposable test/CI resources. No real provider or production migration has been approved.               |
 
 The block applies to both a fresh managed installation and
 `update.sh --apply-migrations`. A normal code-only update remains subject to
@@ -32,3 +33,8 @@ of the following as reviewed source and release evidence:
 Until then, use the Phase 04.1 disposable PIM environment only. Do not bypass
 the guard, copy its migration into another script, use `db push`, or run a
 manual destructive cleanup against a production or unknown database.
+
+Phase 08 does not weaken this block. Its production activation requirements are
+documented in [PHASE-08-PAYMENTS.md](PHASE-08-PAYMENTS.md). A real-provider
+release must explicitly approve both the adapter and the exact database target;
+test flags or a simulator secret cannot grant that authority.

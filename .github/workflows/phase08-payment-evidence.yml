@@ -1,0 +1,525 @@
+name: Phase 08 Payment Evidence
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase08-payment-evidence.yml
+      - .env.payment-test.example
+      - docker-compose.payment-test.yml
+      - package.json
+      - pnpm-lock.yaml
+      - prisma/**
+      - scripts/*payment*.mjs
+      - src/app/**/payment*/**
+      - src/components/payments/**
+      - src/modules/payments/**
+      - src/server/repositories/payment-repository.ts
+      - src/server/services/payment-service.ts
+      - tests/**/*payment*.ts
+      - docs/phase-08/**
+  push:
+    branches:
+      - feature/phase-08-payment-financial-orchestration
+  workflow_dispatch:
+
+# This workflow uses only isolated GitHub-hosted services and test credentials.
+# It cannot deploy, call a production gateway, or mutate production resources.
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-08-payment-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  APP_NAME: Apple333
+  APP_URL: http://127.0.0.1:3000
+  AUTH_URL: http://127.0.0.1:3000
+  NEXTAUTH_URL: http://127.0.0.1:3000
+  AUTH_SECRET: phase08-ci-auth-secret-test-only-at-least-32chars
+  NEXTAUTH_SECRET: phase08-ci-auth-secret-test-only-at-least-32chars
+  NODE_ENV: test
+  APPLE333_TEST_DB: "1"
+  APPLE333_PAYMENT_TEST_DB: "1"
+  APPLE333_PAYMENT_E2E_TEST_DB: "1"
+  PAYMENT_TEST_POSTGRES_DB: apple333_phase08_payment_test
+  PAYMENT_TEST_POSTGRES_USER: apple333_phase08_payment_test
+  PAYMENT_TEST_POSTGRES_PASSWORD: ci-payment-test-only
+  PAYMENT_TEST_POSTGRES_BIND: 127.0.0.1
+  PAYMENT_TEST_POSTGRES_PORT: "55435"
+  PAYMENT_TEST_DATABASE_URL: postgresql://apple333_phase08_payment_test:ci-payment-test-only@127.0.0.1:55435/apple333_phase08_payment_test?schema=public
+  DATABASE_URL: postgresql://apple333_phase08_payment_test:ci-payment-test-only@127.0.0.1:55435/apple333_phase08_payment_test?schema=public
+  PAYMENT_TEST_REDIS_URL: redis://127.0.0.1:56380/8
+  REDIS_URL: redis://127.0.0.1:56380/8
+  PAYMENT_SIMULATOR_URL: http://127.0.0.1:58080
+  PAYMENT_SIMULATOR_SECRET: phase08-ci-disposable-simulator-secret
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run static and application quality gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm typecheck 2>&1 | tee evidence/typecheck.log
+          pnpm typecheck:phase-08-tests 2>&1 | tee evidence/phase08-typecheck.log
+          pnpm lint 2>&1 | tee evidence/lint.log
+          pnpm test 2>&1 | tee evidence/unit-tests.log
+          pnpm test:integration 2>&1 | tee evidence/integration-tests.log
+          NODE_ENV=production pnpm build 2>&1 | tee evidence/production-build.log
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-quality-${{ github.run_id }}
+          path: |
+            evidence/
+            docs/phase-08/
+          if-no-files-found: warn
+          retention-days: 30
+
+  payment-migration:
+    name: Payment Migration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate, apply, and inspect additive migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm payment:test:preflight 2>&1 | tee evidence/payment-preflight.log
+          pnpm payment:test:migrate 2>&1 | tee evidence/payment-migration.log
+          node --env-file-if-exists=.env.payment-test scripts/inspect-payment-test-database.mjs --expect-migrated 2>&1 | tee evidence/payment-schema-inspection.log
+      - name: Upload migration evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-migration-${{ github.run_id }}
+          path: |
+            evidence/
+            docs/phase-08/05-database-migration-report.md
+            prisma/migrations/20260810000000_phase_08_payment_orchestration/migration.sql
+          if-no-files-found: warn
+          retention-days: 30
+
+  payment-database-tests:
+    name: Payment Database Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run persistence and restart-idempotency evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:generate
+          pnpm payment:test:migrate 2>&1 | tee evidence/payment-migration.log
+          pnpm exec vitest run --config vitest.payment-db.config.ts tests/database/payment-persistence.test.ts 2>&1 | tee evidence/payment-database-tests.log
+      - name: Upload database-test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-database-tests-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  payment-concurrency:
+    name: Payment Concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run financial concurrency evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:generate
+          pnpm payment:test:migrate 2>&1 | tee evidence/payment-migration.log
+          pnpm exec vitest run --config vitest.payment-db.config.ts tests/database/payment-concurrency.test.ts 2>&1 | tee evidence/payment-concurrency.log
+      - name: Upload concurrency evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-concurrency-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  payment-e2e:
+    name: Payment E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 56380:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prepare production artifact and disposable payment state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:generate
+          pnpm payment:test:migrate 2>&1 | tee evidence/payment-migration.log
+          pnpm payment:test:seed 2>&1 | tee evidence/payment-seed.log
+          NODE_ENV=production pnpm build 2>&1 | tee evidence/production-build.log
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run deterministic simulator browser journeys
+        shell: bash
+        run: pnpm test:e2e:payments 2>&1 | tee evidence/payment-simulator.log
+      - name: Upload E2E and simulator evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-e2e-${{ github.run_id }}
+          path: |
+            evidence/
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 30
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out complete history without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Enforce zero High and Critical production findings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          set +e
+          pnpm audit --prod --json > evidence/production-dependency-audit.json
+          audit_exit=$?
+          set -e
+          PNPM_AUDIT_EXIT_CODE="$audit_exit" node scripts/verify-production-dependency-audit.mjs evidence/production-dependency-audit.json 2>&1 | tee evidence/security-audit.log
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload security audit
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-security-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  reconciliation:
+    name: Reconciliation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prove zero deterministic drift
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:generate
+          pnpm payment:test:migrate 2>&1 | tee evidence/payment-migration.log
+          pnpm payment:test:seed 2>&1 | tee evidence/payment-seed.log
+          pnpm payment:reconcile 2>&1 | tee evidence/payment-reconciliation.json
+      - name: Upload reconciliation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-reconciliation-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  benchmark-10k:
+    name: 10k Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run guarded 10k payment benchmark
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:generate
+          pnpm payment:test:migrate
+          pnpm payment:benchmark --dataset 10000 2>&1 | tee evidence/payment-benchmark-10k.json
+      - name: Upload 10k evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-benchmark-10k-${{ github.run_id }}
+          path: |
+            evidence/
+            artifacts/phase-08/
+          if-no-files-found: warn
+          retention-days: 30
+
+  benchmark-100k:
+    name: 100k Benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase08_payment_test
+          POSTGRES_USER: apple333_phase08_payment_test
+          POSTGRES_PASSWORD: ci-payment-test-only
+        ports:
+          - 55435:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase08_payment_test -d apple333_phase08_payment_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run guarded 100k payment benchmark
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:generate
+          pnpm payment:test:migrate
+          pnpm payment:benchmark --dataset 100000 2>&1 | tee evidence/payment-benchmark-100k.json
+      - name: Upload 100k evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-benchmark-100k-${{ github.run_id }}
+          path: |
+            evidence/
+            artifacts/phase-08/
+          if-no-files-found: warn
+          retention-days: 30
+
+  artifact-upload:
+    name: Artifact Upload
+    if: always()
+    needs:
+      - quality
+      - payment-migration
+      - payment-database-tests
+      - payment-concurrency
+      - payment-e2e
+      - security
+      - reconciliation
+      - benchmark-10k
+      - benchmark-100k
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download available Phase 08 evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: phase-08-*
+          path: phase-08-evidence
+          merge-multiple: false
+      - name: Upload retained evidence bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-08-complete-evidence-${{ github.run_id }}
+          path: phase-08-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  cleanup:
+    name: Cleanup
+    if: always()
+    needs: [artifact-upload]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm job-scoped cleanup boundary
+        run: |
+          echo "PostgreSQL and Redis are GitHub job-scoped disposable services."
+          echo "No production, shared, or non-Phase-08 resource was targeted."

@@ -1,17 +1,17 @@
 export type AdminNavIcon =
-  | 'dashboard'
-  | 'users'
-  | 'shield'
-  | 'package'
-  | 'boxes'
-  | 'orders'
-  | 'finance'
-  | 'crm'
-  | 'reports'
-  | 'settings'
-  | 'media'
-  | 'notifications'
-  | 'audit';
+  | "dashboard"
+  | "users"
+  | "shield"
+  | "package"
+  | "boxes"
+  | "orders"
+  | "finance"
+  | "crm"
+  | "reports"
+  | "settings"
+  | "media"
+  | "notifications"
+  | "audit";
 
 export interface AdminNavigationItem {
   id: string;
@@ -19,7 +19,7 @@ export interface AdminNavigationItem {
   href: string;
   icon: AdminNavIcon;
   permission?: string;
-  availability: 'available' | 'planned';
+  availability: "available" | "planned";
 }
 
 export interface AdminNavigationGroup {
@@ -29,80 +29,263 @@ export interface AdminNavigationGroup {
 }
 
 const implementedRouteOverrides = new Set([
-  '/admin/products',
-  '/admin/inventory',
-  '/admin/branches',
-  '/admin/warehouses',
-  '/admin/imei',
-  '/admin/orders',
+  "/admin/products",
+  "/admin/inventory",
+  "/admin/branches",
+  "/admin/warehouses",
+  "/admin/imei",
+  "/admin/orders",
+  "/admin/payments",
 ]);
 
 export const adminNavigation: readonly AdminNavigationGroup[] = [
   {
-    id: 'overview',
-    label: 'نمای کلی',
-    items: [{ id: 'dashboard', label: 'داشبورد', href: '/admin', icon: 'dashboard', permission: 'dashboard.read', availability: 'available' }]
+    id: "overview",
+    label: "نمای کلی",
+    items: [
+      {
+        id: "dashboard",
+        label: "داشبورد",
+        href: "/admin",
+        icon: "dashboard",
+        permission: "dashboard.read",
+        availability: "available",
+      },
+    ],
   },
   {
-    id: 'access',
-    label: 'دسترسی و کاربران',
+    id: "access",
+    label: "دسترسی و کاربران",
     items: [
-      { id: 'users', label: 'کاربران', href: '/admin/users', icon: 'users', permission: 'users.read', availability: 'available' },
-      { id: 'roles', label: 'نقش‌ها', href: '/admin/roles', icon: 'shield', permission: 'roles.read', availability: 'available' },
-      { id: 'permissions', label: 'مجوزها', href: '/admin/permissions', icon: 'shield', permission: 'permissions.read', availability: 'available' }
-    ]
+      {
+        id: "users",
+        label: "کاربران",
+        href: "/admin/users",
+        icon: "users",
+        permission: "users.read",
+        availability: "available",
+      },
+      {
+        id: "roles",
+        label: "نقش‌ها",
+        href: "/admin/roles",
+        icon: "shield",
+        permission: "roles.read",
+        availability: "available",
+      },
+      {
+        id: "permissions",
+        label: "مجوزها",
+        href: "/admin/permissions",
+        icon: "shield",
+        permission: "permissions.read",
+        availability: "available",
+      },
+    ],
   },
   {
-    id: 'commerce',
-    label: 'عملیات تجاری',
+    id: "commerce",
+    label: "عملیات تجاری",
     items: [
-      { id: 'products', label: 'محصولات', href: '/admin/products', icon: 'package', permission: 'products.read', availability: 'planned' },
-      { id: 'inventory', label: 'موجودی', href: '/admin/inventory', icon: 'boxes', permission: 'inventory.read', availability: 'planned' },
-      { id: 'branches', label: 'شعب', href: '/admin/branches', icon: 'boxes', permission: 'branches.read', availability: 'planned' },
-      { id: 'warehouses', label: 'انبارها', href: '/admin/warehouses', icon: 'boxes', permission: 'warehouses.read', availability: 'planned' },
-      { id: 'imei', label: 'IMEI و سریال', href: '/admin/imei', icon: 'shield', permission: 'devices.read', availability: 'planned' },
-      { id: 'orders', label: 'سفارش‌ها', href: '/admin/orders', icon: 'orders', permission: 'orders.read', availability: 'planned' },
-      { id: 'finance', label: 'مالی', href: '/admin/finance', icon: 'finance', permission: 'finance.read', availability: 'planned' },
-      { id: 'crm', label: 'مشتریان', href: '/admin/crm', icon: 'crm', permission: 'crm.read', availability: 'planned' },
-      { id: 'reports', label: 'گزارش‌ها', href: '/admin/reports', icon: 'reports', permission: 'reports.read', availability: 'planned' }
-    ]
+      {
+        id: "products",
+        label: "محصولات",
+        href: "/admin/products",
+        icon: "package",
+        permission: "products.read",
+        availability: "planned",
+      },
+      {
+        id: "inventory",
+        label: "موجودی",
+        href: "/admin/inventory",
+        icon: "boxes",
+        permission: "inventory.read",
+        availability: "planned",
+      },
+      {
+        id: "branches",
+        label: "شعب",
+        href: "/admin/branches",
+        icon: "boxes",
+        permission: "branches.read",
+        availability: "planned",
+      },
+      {
+        id: "warehouses",
+        label: "انبارها",
+        href: "/admin/warehouses",
+        icon: "boxes",
+        permission: "warehouses.read",
+        availability: "planned",
+      },
+      {
+        id: "imei",
+        label: "IMEI و سریال",
+        href: "/admin/imei",
+        icon: "shield",
+        permission: "devices.read",
+        availability: "planned",
+      },
+      {
+        id: "orders",
+        label: "سفارش‌ها",
+        href: "/admin/orders",
+        icon: "orders",
+        permission: "orders.read",
+        availability: "planned",
+      },
+      {
+        id: "finance",
+        label: "مالی",
+        href: "/admin/finance",
+        icon: "finance",
+        permission: "finance.read",
+        availability: "planned",
+      },
+      {
+        id: "crm",
+        label: "مشتریان",
+        href: "/admin/crm",
+        icon: "crm",
+        permission: "crm.read",
+        availability: "planned",
+      },
+      {
+        id: "reports",
+        label: "گزارش‌ها",
+        href: "/admin/reports",
+        icon: "reports",
+        permission: "reports.read",
+        availability: "planned",
+      },
+    ],
   },
   {
-    id: 'system',
-    label: 'سیستم',
+    id: "payment-platform",
+    label: "مدیریت پرداخت",
     items: [
-      { id: 'settings', label: 'تنظیمات', href: '/admin/settings', icon: 'settings', permission: 'settings.read', availability: 'available' },
-      { id: 'media', label: 'رسانه‌ها', href: '/admin/media', icon: 'media', permission: 'media.read', availability: 'available' },
-      { id: 'notifications', label: 'اعلان‌ها', href: '/admin/notifications', icon: 'notifications', permission: 'notifications.read', availability: 'available' },
-      { id: 'audit-logs', label: 'رویدادهای ممیزی', href: '/admin/audit-logs', icon: 'audit', permission: 'audit.read', availability: 'available' }
-    ]
+      {
+        id: "payments",
+        label: "پرداخت‌ها",
+        href: "/admin/payments",
+        icon: "finance",
+        permission: "payments.read",
+        availability: "available",
+      },
+    ],
   },
   {
-    id: 'product-platform',
-    label: 'Apple Product Platform',
+    id: "system",
+    label: "سیستم",
     items: [
-      { id: 'brands', label: 'Brands', href: '/admin/brands', icon: 'package', permission: 'brands.read', availability: 'available' },
-      { id: 'categories', label: 'Categories', href: '/admin/categories', icon: 'package', permission: 'categories.read', availability: 'available' },
-      { id: 'specifications', label: 'Specifications', href: '/admin/specifications', icon: 'package', permission: 'attributes.read', availability: 'available' },
-      { id: 'warranties', label: 'Warranties', href: '/admin/warranties', icon: 'package', permission: 'warranties.read', availability: 'available' },
-      { id: 'product-imports', label: 'Product imports', href: '/admin/product-imports', icon: 'package', permission: 'product-imports.read', availability: 'available' }
-    ]
-  }
+      {
+        id: "settings",
+        label: "تنظیمات",
+        href: "/admin/settings",
+        icon: "settings",
+        permission: "settings.read",
+        availability: "available",
+      },
+      {
+        id: "media",
+        label: "رسانه‌ها",
+        href: "/admin/media",
+        icon: "media",
+        permission: "media.read",
+        availability: "available",
+      },
+      {
+        id: "notifications",
+        label: "اعلان‌ها",
+        href: "/admin/notifications",
+        icon: "notifications",
+        permission: "notifications.read",
+        availability: "available",
+      },
+      {
+        id: "audit-logs",
+        label: "رویدادهای ممیزی",
+        href: "/admin/audit-logs",
+        icon: "audit",
+        permission: "audit.read",
+        availability: "available",
+      },
+    ],
+  },
+  {
+    id: "product-platform",
+    label: "Apple Product Platform",
+    items: [
+      {
+        id: "brands",
+        label: "Brands",
+        href: "/admin/brands",
+        icon: "package",
+        permission: "brands.read",
+        availability: "available",
+      },
+      {
+        id: "categories",
+        label: "Categories",
+        href: "/admin/categories",
+        icon: "package",
+        permission: "categories.read",
+        availability: "available",
+      },
+      {
+        id: "specifications",
+        label: "Specifications",
+        href: "/admin/specifications",
+        icon: "package",
+        permission: "attributes.read",
+        availability: "available",
+      },
+      {
+        id: "warranties",
+        label: "Warranties",
+        href: "/admin/warranties",
+        icon: "package",
+        permission: "warranties.read",
+        availability: "available",
+      },
+      {
+        id: "product-imports",
+        label: "Product imports",
+        href: "/admin/product-imports",
+        icon: "package",
+        permission: "product-imports.read",
+        availability: "available",
+      },
+    ],
+  },
 ];
 
-export function visibleAdminNavigation(permissions: ReadonlySet<string>): readonly AdminNavigationGroup[] {
+export function visibleAdminNavigation(
+  permissions: ReadonlySet<string>,
+): readonly AdminNavigationGroup[] {
   return adminNavigation
     .map((group) => ({
       ...group,
       items: group.items
         .filter((item) => !item.permission || permissions.has(item.permission))
-        .map((item) => implementedRouteOverrides.has(item.href) ? { ...item, availability: 'available' as const } : item)
+        .map((item) =>
+          implementedRouteOverrides.has(item.href)
+            ? { ...item, availability: "available" as const }
+            : item,
+        ),
     }))
     .filter((group) => group.items.length > 0);
 }
 
-export function findAdminNavigationItem(pathname: string): AdminNavigationItem | undefined {
+export function findAdminNavigationItem(
+  pathname: string,
+): AdminNavigationItem | undefined {
   const items = adminNavigation.flatMap((group) => group.items);
-  return items.find((item) => item.href === pathname)
-    ?? items.find((item) => item.href !== '/admin' && pathname.startsWith(`${item.href}/`));
+  return (
+    items.find((item) => item.href === pathname) ??
+    items.find(
+      (item) => item.href !== "/admin" && pathname.startsWith(`${item.href}/`),
+    )
+  );
 }

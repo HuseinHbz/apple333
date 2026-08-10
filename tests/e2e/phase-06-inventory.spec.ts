@@ -28,12 +28,15 @@ async function login(
   page: Page,
   actor: E2eInventoryActor = E2E_INVENTORY_ACTORS.INVENTORY_MANAGER,
   callbackUrl = '/admin/inventory',
+  expectedUrl = callbackUrl,
 ): Promise<void> {
   await page.goto(`/account/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   await page.locator('input[name="email"]').fill(actor.email);
   await page.locator('input[name="password"]').fill(TEST_ADMIN_PASSWORD);
-  await page.locator('button[type="submit"]').click();
-  await expect(page).toHaveURL(new RegExp(callbackUrl.replaceAll('/', '\\/')));
+  await Promise.all([
+    page.waitForURL(new RegExp(expectedUrl.replaceAll('/', '\\/')), { timeout: 20_000 }),
+    page.locator('button[type="submit"]').click(),
+  ]);
 }
 
 async function browserApi<T>(page: Page, path: string, init?: Readonly<{ method?: string; body?: unknown }>): Promise<Readonly<{ status: number; body: ApiEnvelope<T> }>> {
@@ -283,7 +286,12 @@ test.describe('Phase 06 inventory and multi-branch browser journeys', () => {
   });
 
   test('denies every inventory API operation to No-permission User', async ({ page }) => {
-    await login(page, E2E_INVENTORY_ACTORS.NO_PERMISSION_USER);
+    await login(
+      page,
+      E2E_INVENTORY_ACTORS.NO_PERMISSION_USER,
+      '/admin/inventory',
+      '/admin/access-denied',
+    );
     const [readResult, mutationResult] = await Promise.all([
       browserApi<unknown>(page, `/api/inventory?sku=${BULK_SKU}`),
       browserApi<unknown>(page, '/api/inventory/adjust', {

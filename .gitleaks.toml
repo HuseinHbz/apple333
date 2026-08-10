@@ -1,0 +1,7 @@
+title = "Apple333 Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# Historical false-positive exceptions are fingerprint-pinned in
+# .gitleaksignore. A new value, location, rule, or commit remains blocking.

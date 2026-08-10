@@ -54,8 +54,12 @@ async function login(
   );
   await page.locator('input[name="email"]').fill(actor.email);
   await page.locator('input[name="password"]').fill(ORDER_E2E_PASSWORD);
-  await page.locator('button[type="submit"]').click();
-  await expect(page).toHaveURL(new RegExp(callbackUrl.replaceAll("/", "\\/")));
+  await Promise.all([
+    page.waitForURL(new RegExp(callbackUrl.replaceAll("/", "\\/")), {
+      timeout: 20_000,
+    }),
+    page.locator('button[type="submit"]').click(),
+  ]);
 }
 
 async function browserApi<T>(
@@ -260,7 +264,7 @@ test.describe("Phase 07 order-management browser journeys", () => {
     expect(result.body.success).toBe(false);
   });
 
-  test("lets an authorized manager search, confirm, pay, fulfill, and audit the customer order", async ({
+  test("lets an authorized manager confirm and fulfill while rejecting legacy manual payment", async ({
     page,
   }) => {
     expect(primaryOrder).not.toBeNull();
@@ -337,8 +341,10 @@ test.describe("Phase 07 order-management browser journeys", () => {
 
     let current = await advanceFulfillment(page, confirmed, "PENDING");
     const paymentKey = requestKey("payment-primary");
-    current = requireOrder(
-      await browserApi<Order>(page, `/api/admin/orders/${current.id}/payment`, {
+    const legacyPayment = await browserApi<Order>(
+      page,
+      `/api/admin/orders/${current.id}/payment`,
+      {
         method: "POST",
         idempotencyKey: paymentKey,
         body: {
@@ -347,15 +353,19 @@ test.describe("Phase 07 order-management browser journeys", () => {
           expectedVersion: current.version,
           idempotencyKey: paymentKey,
         },
-      }),
-      200,
+      },
+    );
+    expect(legacyPayment.status).toBe(410);
+    expect(legacyPayment.body.success).toBe(false);
+    expect(legacyPayment.body.error?.code).toBe(
+      "ORDER_PAYMENT_MANUAL_DISABLED",
     );
     current = await advanceFulfillment(page, current, "PICKING");
     current = await advanceFulfillment(page, current, "PACKED");
     current = await advanceFulfillment(page, current, "SHIPPED");
     current = await advanceFulfillment(page, current, "DELIVERED");
-    expect(current.status).toBe("COMPLETED");
-    expect(current.paymentStatus).toBe("PAID");
+    expect(current.status).toBe("PROCESSING");
+    expect(current.paymentStatus).toBe("UNPAID");
     expect(current.fulfillmentStatus).toBe("DELIVERED");
 
     const noteKey = requestKey("internal-note-primary");
@@ -389,7 +399,7 @@ test.describe("Phase 07 order-management browser journeys", () => {
       ),
       200,
     );
-    expect(result.status).toBe("COMPLETED");
+    expect(result.status).toBe("PROCESSING");
     expect(JSON.stringify(result)).not.toContain("E2E_PHASE07_INTERNAL_NOTE");
   });
 

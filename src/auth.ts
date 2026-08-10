@@ -1,15 +1,16 @@
-import { PrismaAdapter } from '@auth/prisma-adapter';
-import { compare } from 'bcryptjs';
-import type { Adapter } from 'next-auth/adapters';
-import type { NextAuthOptions } from 'next-auth';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import { z } from 'zod';
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { compare } from "bcryptjs";
+import type { Adapter } from "next-auth/adapters";
+import type { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { z } from "zod";
 
-import { prisma } from '@/server/db/prisma';
+import { isPaymentSimulatorRuntimeAllowed } from "@/modules/payments/runtime-policy";
+import { prisma } from "@/server/db/prisma";
 
 const credentialsSchema = z.object({
   email: z.string().trim().email().max(254),
-  password: z.string().min(12).max(128)
+  password: z.string().min(12).max(128),
 });
 
 const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
@@ -21,10 +22,17 @@ const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
  * Both the runtime-evidence marker and an owned disposable-database marker are
  * required, so an ordinary production host cannot opt out accidentally.
  */
-const isGuardedLoopbackE2eRuntime = process.env.APPLE333_E2E_RUNTIME_EVIDENCE === '1'
-  && (process.env.APPLE333_E2E_TEST_DB === '1' || process.env.APPLE333_ORDER_E2E_TEST_DB === '1');
+const isGuardedPaymentE2eRuntime =
+  process.env.APPLE333_PAYMENT_E2E_TEST_DB === "1" &&
+  isPaymentSimulatorRuntimeAllowed();
+const isGuardedLoopbackE2eRuntime =
+  process.env.APPLE333_E2E_RUNTIME_EVIDENCE === "1" &&
+  (process.env.APPLE333_E2E_TEST_DB === "1" ||
+    process.env.APPLE333_ORDER_E2E_TEST_DB === "1" ||
+    isGuardedPaymentE2eRuntime);
 
-export const usesSecureSessionCookie = process.env.NODE_ENV === 'production' && !isGuardedLoopbackE2eRuntime;
+export const usesSecureSessionCookie =
+  process.env.NODE_ENV === "production" && !isGuardedLoopbackE2eRuntime;
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
@@ -33,30 +41,32 @@ export const authOptions: NextAuthOptions = {
     // NextAuth's Credentials provider can only establish JWT sessions. The
     // Prisma adapter remains available for the shared user model, but a
     // database session strategy would make every credential sign-in fail.
-    strategy: 'jwt',
+    strategy: "jwt",
     maxAge: 60 * 60 * 8,
-    updateAge: 60 * 30
+    updateAge: 60 * 30,
   },
   pages: {
-    signIn: '/account/login'
+    signIn: "/account/login",
   },
   cookies: {
     sessionToken: {
-      name: usesSecureSessionCookie ? '__Secure-apple333.session' : 'apple333.session',
+      name: usesSecureSessionCookie
+        ? "__Secure-apple333.session"
+        : "apple333.session",
       options: {
         httpOnly: true,
-        path: '/',
-        sameSite: 'lax',
-        secure: usesSecureSessionCookie
-      }
-    }
+        path: "/",
+        sameSite: "lax",
+        secure: usesSecureSessionCookie,
+      },
+    },
   },
   providers: [
     CredentialsProvider({
-      name: 'Apple333 credentials',
+      name: "Apple333 credentials",
       credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' }
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
         const parsed = credentialsSchema.safeParse(credentials);
@@ -66,10 +76,10 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email.toLowerCase() },
-          include: { adminProfile: true, profile: true }
+          include: { adminProfile: true, profile: true },
         });
 
-        if (!user || user.status !== 'ACTIVE') {
+        if (!user || user.status !== "ACTIVE") {
           return null;
         }
 
@@ -82,7 +92,10 @@ export const authOptions: NextAuthOptions = {
           : user.profile?.passwordHash;
         if (!passwordHash) return null;
 
-        const passwordMatches = await compare(parsed.data.password, passwordHash);
+        const passwordMatches = await compare(
+          parsed.data.password,
+          passwordHash,
+        );
         if (!passwordMatches) {
           return null;
         }
@@ -90,7 +103,7 @@ export const authOptions: NextAuthOptions = {
         if (user.adminProfile?.isActive) {
           await prisma.adminUser.update({
             where: { id: user.adminProfile.id },
-            data: { lastLoginAt: new Date() }
+            data: { lastLoginAt: new Date() },
           });
         }
 
@@ -98,10 +111,10 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           name: user.name,
           email: user.email,
-          image: user.image
+          image: user.image,
         };
-      }
-    })
+      },
+    }),
   ],
   callbacks: {
     async session({ session, token }) {
@@ -109,6 +122,6 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub;
       }
       return session;
-    }
-  }
+    },
+  },
 };

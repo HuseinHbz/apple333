@@ -232,6 +232,97 @@ enum OrderPaymentStatus {
   REFUNDED
 }
 
+enum PaymentStatus {
+  CREATED
+  INITIALIZING
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  ONLINE
+}
+
+enum PaymentAttemptStatus {
+  CREATED
+  INITIALIZING
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentTransactionType {
+  INITIALIZATION
+  AUTHORIZATION
+  CAPTURE
+  VERIFICATION
+  REVERSAL
+  REFUND
+  RECONCILIATION
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum PaymentSignatureStatus {
+  VALID
+  INVALID
+  NOT_PROVIDED
+  UNSUPPORTED
+}
+
+enum PaymentCallbackProcessingStatus {
+  RECEIVED
+  PROCESSED
+  DUPLICATE
+  REJECTED
+  FAILED
+}
+
+enum RefundStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum PaymentReconciliationDifferenceType {
+  NONE
+  INTERNAL_PAID_PROVIDER_NOT_PAID
+  PROVIDER_PAID_INTERNAL_NOT_PAID
+  AMOUNT_MISMATCH
+  CURRENCY_MISMATCH
+  DUPLICATE_PROVIDER_REFERENCE
+  MISSING_ORDER
+  REFUND_MISMATCH
+  UNPROCESSED_CALLBACK
+}
+
+enum PaymentReconciliationResolutionStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
+enum PaymentEventStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
 enum OrderAllocationStatus {
   UNALLOCATED
   PARTIALLY_ALLOCATED
@@ -283,49 +374,49 @@ enum OrderDeviceAssignmentStatus {
 }
 
 model User {
-  id              String                 @id @default(cuid())
-  name            String?
-  image           String?
-  email           String?                @unique
-  emailVerified   DateTime?
-  mobile          String?                @unique
-  status          UserStatus             @default(ACTIVE)
-  profile         UserProfile?
-  adminProfile    AdminUser?
-  addresses       Address[]
-  roles           UserRole[]
-  sessions        Session[]
-  accounts        Account[]
-  auditLogs       AuditLog[]             @relation("AuditActor")
-  uploadedMedia   MediaFile[]            @relation("MediaUploader")
-  notifications   Notification[]         @relation("NotificationRecipient")
-  updatedSettings SystemSetting[]        @relation("SettingUpdatedBy")
-  settingVersions SystemSettingVersion[] @relation("SettingVersionActor")
-  storefrontCarts StorefrontCart[]
-  approvedProducts CatalogProduct[]       @relation("ProductApprovedBy")
+  id                    String                 @id @default(cuid())
+  name                  String?
+  image                 String?
+  email                 String?                @unique
+  emailVerified         DateTime?
+  mobile                String?                @unique
+  status                UserStatus             @default(ACTIVE)
+  profile               UserProfile?
+  adminProfile          AdminUser?
+  addresses             Address[]
+  roles                 UserRole[]
+  sessions              Session[]
+  accounts              Account[]
+  auditLogs             AuditLog[]             @relation("AuditActor")
+  uploadedMedia         MediaFile[]            @relation("MediaUploader")
+  notifications         Notification[]         @relation("NotificationRecipient")
+  updatedSettings       SystemSetting[]        @relation("SettingUpdatedBy")
+  settingVersions       SystemSettingVersion[] @relation("SettingVersionActor")
+  storefrontCarts       StorefrontCart[]
+  approvedProducts      CatalogProduct[]       @relation("ProductApprovedBy")
   productWorkflowEvents ProductWorkflowEvent[] @relation("ProductWorkflowActor")
-  productImportBatches ProductImportBatch[] @relation("ProductImportRequestedBy")
-  inventoryMovements   StockMovement[]         @relation("StockMovementActor")
-  inventoryReservations InventoryReservation[]  @relation("InventoryReservationCreator")
-  orders              Order[]                 @relation("OrderCustomer")
-  orderStatusHistory  OrderStatusHistory[]    @relation("OrderStatusActor")
-  orderNotes          OrderNote[]             @relation("OrderNoteAuthor")
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  productImportBatches  ProductImportBatch[]   @relation("ProductImportRequestedBy")
+  inventoryMovements    StockMovement[]        @relation("StockMovementActor")
+  inventoryReservations InventoryReservation[] @relation("InventoryReservationCreator")
+  orders                Order[]                @relation("OrderCustomer")
+  orderStatusHistory    OrderStatusHistory[]   @relation("OrderStatusActor")
+  orderNotes            OrderNote[]            @relation("OrderNoteAuthor")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
   @@index([status, createdAt])
 }
 
 model AdminUser {
-  id           String   @id @default(cuid())
-  userId       String   @unique
+  id           String    @id @default(cuid())
+  userId       String    @unique
   passwordHash String?
   branchId     String?
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([branchId, isActive])
 }
@@ -480,53 +571,53 @@ model SystemSettingVersion {
 }
 
 model MediaFile {
-  id           String    @id @default(cuid())
-  storageKey   String    @unique
-  originalName String
-  contentType  String
-  extension    String
-  bytes        Int
-  kind         MediaKind
-  url          String?
-  checksum     String?
-  metadata     Json?
-  uploadedById String
-  uploadedBy   User      @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
-  productMedia ProductMedia[]
-  brandLogos   Brand[]   @relation("BrandLogoMedia")
-  categoryImages CatalogCategory[] @relation("CategoryImageMedia")
+  id                String               @id @default(cuid())
+  storageKey        String               @unique
+  originalName      String
+  contentType       String
+  extension         String
+  bytes             Int
+  kind              MediaKind
+  url               String?
+  checksum          String?
+  metadata          Json?
+  uploadedById      String
+  uploadedBy        User                 @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  productMedia      ProductMedia[]
+  brandLogos        Brand[]              @relation("BrandLogoMedia")
+  categoryImages    CatalogCategory[]    @relation("CategoryImageMedia")
   importSourceFiles ProductImportBatch[] @relation("ProductImportSourceFile")
-  deletedAt    DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  deletedAt         DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   @@index([uploadedById, createdAt])
   @@index([kind, deletedAt, createdAt])
 }
 
 model CatalogCategory {
-  id                  String                       @id @default(cuid())
-  parentId            String?
-  imageMediaId        String?
-  slug                String                       @unique
-  name                String
-  description         String?
-  imageUrl            String?
-  seoTitle            String?
-  seoDescription      String?
-  canonicalUrl        String?
-  schemaData          Json?
-  sortOrder           Int                          @default(0)
-  isActive            Boolean                      @default(true)
-  deletedAt           DateTime?
-  parent              CatalogCategory?             @relation("CatalogCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children            CatalogCategory[]            @relation("CatalogCategoryTree")
-  imageMedia          MediaFile?                   @relation("CategoryImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
-  products            CatalogProduct[]
+  id                   String                       @id @default(cuid())
+  parentId             String?
+  imageMediaId         String?
+  slug                 String                       @unique
+  name                 String
+  description          String?
+  imageUrl             String?
+  seoTitle             String?
+  seoDescription       String?
+  canonicalUrl         String?
+  schemaData           Json?
+  sortOrder            Int                          @default(0)
+  isActive             Boolean                      @default(true)
+  deletedAt            DateTime?
+  parent               CatalogCategory?             @relation("CatalogCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children             CatalogCategory[]            @relation("CatalogCategoryTree")
+  imageMedia           MediaFile?                   @relation("CategoryImageMedia", fields: [imageMediaId], references: [id], onDelete: SetNull)
+  products             CatalogProduct[]
   attributeAssignments CategoryAttribute[]
-  specificationGroups CategorySpecificationGroup[]
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
+  specificationGroups  CategorySpecificationGroup[]
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
 
   @@index([parentId, sortOrder])
   @@index([isActive, sortOrder])
@@ -534,40 +625,40 @@ model CatalogCategory {
 }
 
 model CatalogProduct {
-  id                  String               @id @default(cuid())
-  categoryId          String?
-  brandId             String?
-  approvedById        String?
-  slug                String               @unique
-  name                String
-  brand               String               @default("Apple")
-  summary             String?
-  description         String?
-  status              CatalogProductStatus @default(DRAFT)
-  specifications      Json?
-  seoTitle            String?
-  seoDescription      String?
-  submittedForReviewAt DateTime?
-  approvedAt          DateTime?
-  publishedAt         DateTime?
-  deletedAt           DateTime?
-  version             Int                  @default(1)
-  searchText          String?
-  isFeatured          Boolean              @default(false)
-  featuredRank        Int?
-  isNew               Boolean              @default(false)
-  isOnSale            Boolean              @default(false)
-  category            CatalogCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  brandRecord         Brand?                @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  approvedBy          User?                 @relation("ProductApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  variants            CatalogVariant[]
-  media               ProductMedia[]
-  seo                 ProductSeo?
+  id                       String                 @id @default(cuid())
+  categoryId               String?
+  brandId                  String?
+  approvedById             String?
+  slug                     String                 @unique
+  name                     String
+  brand                    String                 @default("Apple")
+  summary                  String?
+  description              String?
+  status                   CatalogProductStatus   @default(DRAFT)
+  specifications           Json?
+  seoTitle                 String?
+  seoDescription           String?
+  submittedForReviewAt     DateTime?
+  approvedAt               DateTime?
+  publishedAt              DateTime?
+  deletedAt                DateTime?
+  version                  Int                    @default(1)
+  searchText               String?
+  isFeatured               Boolean                @default(false)
+  featuredRank             Int?
+  isNew                    Boolean                @default(false)
+  isOnSale                 Boolean                @default(false)
+  category                 CatalogCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brandRecord              Brand?                 @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  approvedBy               User?                  @relation("ProductApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  variants                 CatalogVariant[]
+  media                    ProductMedia[]
+  seo                      ProductSeo?
   specificationsStructured ProductSpecification[]
-  workflowEvents      ProductWorkflowEvent[]
-  orderItems          OrderItem[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  workflowEvents           ProductWorkflowEvent[]
+  orderItems               OrderItem[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
   @@index([status, publishedAt])
   @@index([categoryId, status])
@@ -577,34 +668,34 @@ model CatalogProduct {
 }
 
 model CatalogVariant {
-  id                  String               @id @default(cuid())
-  productId           String
-  warrantyId          String?
-  sku                 String               @unique
-  title               String?
-  color               String?
-  storage             String?
-  region              String?
-  modelNumber         String?
-  optionKey           String?
-  warranty            String?
-  attributes          Json?
-  priceRials          BigInt
-  compareAtPriceRials BigInt?
-  isActive            Boolean              @default(true)
-  deletedAt           DateTime?
-  version             Int                  @default(1)
-  sortOrder           Int                  @default(0)
-  product             CatalogProduct       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  warrantyRecord      Warranty?            @relation(fields: [warrantyId], references: [id], onDelete: SetNull)
-  inventory           BranchInventory[]
-  cartItems           StorefrontCartItem[]
-  skuRecord           ProductSku?
+  id                       String                 @id @default(cuid())
+  productId                String
+  warrantyId               String?
+  sku                      String                 @unique
+  title                    String?
+  color                    String?
+  storage                  String?
+  region                   String?
+  modelNumber              String?
+  optionKey                String?
+  warranty                 String?
+  attributes               Json?
+  priceRials               BigInt
+  compareAtPriceRials      BigInt?
+  isActive                 Boolean                @default(true)
+  deletedAt                DateTime?
+  version                  Int                    @default(1)
+  sortOrder                Int                    @default(0)
+  product                  CatalogProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warrantyRecord           Warranty?              @relation(fields: [warrantyId], references: [id], onDelete: SetNull)
+  inventory                BranchInventory[]
+  cartItems                StorefrontCartItem[]
+  skuRecord                ProductSku?
   specificationsStructured ProductSpecification[]
-  media               ProductMedia[]
-  orderItems          OrderItem[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  media                    ProductMedia[]
+  orderItems               OrderItem[]
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 
   @@index([productId, isActive, sortOrder])
   @@index([isActive, priceRials])
@@ -617,7 +708,7 @@ model ProductMedia {
   productId String
   mediaId   String
   variantId String?
-  id        String           @default(cuid()) @unique
+  id        String           @unique @default(cuid())
   role      ProductMediaRole @default(GALLERY)
   altText   String?
   caption   String?
@@ -635,9 +726,9 @@ model ProductMedia {
 }
 
 model Brand {
-  id             String      @id @default(cuid())
-  code           String      @unique
-  slug           String      @unique
+  id             String           @id @default(cuid())
+  code           String           @unique
+  slug           String           @unique
   name           String
   logoMediaId    String?
   description    String?
@@ -645,115 +736,115 @@ model Brand {
   seoDescription String?
   canonicalUrl   String?
   schemaData     Json?
-  status         BrandStatus @default(DRAFT)
+  status         BrandStatus      @default(DRAFT)
   deletedAt      DateTime?
-  logoMedia      MediaFile?  @relation("BrandLogoMedia", fields: [logoMediaId], references: [id], onDelete: SetNull)
+  logoMedia      MediaFile?       @relation("BrandLogoMedia", fields: [logoMediaId], references: [id], onDelete: SetNull)
   products       CatalogProduct[]
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([status, name])
   @@index([deletedAt, status])
 }
 
 model Warranty {
-  id             String   @id @default(cuid())
-  code           String   @unique
-  provider        String
+  id             String           @id @default(cuid())
+  code           String           @unique
+  provider       String
   name           String
   durationMonths Int
-  terms          String?  @db.Text
-  conditions     String?  @db.Text
-  isActive       Boolean  @default(true)
+  terms          String?          @db.Text
+  conditions     String?          @db.Text
+  isActive       Boolean          @default(true)
   deletedAt      DateTime?
   variants       CatalogVariant[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([provider, isActive])
   @@index([deletedAt, isActive])
 }
 
 model ProductSku {
-  id                  String           @id @default(cuid())
-  variantId           String           @unique
-  code                String           @unique
-  barcode             String?          @unique
+  id                  String              @id @default(cuid())
+  variantId           String              @unique
+  code                String              @unique
+  barcode             String?             @unique
   priceRials          BigInt
   compareAtPriceRials BigInt?
   costRials           BigInt?
-  status              ProductSkuStatus @default(ACTIVE)
-  version             Int              @default(1)
+  status              ProductSkuStatus    @default(ACTIVE)
+  version             Int                 @default(1)
   deletedAt           DateTime?
-  variant             CatalogVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variant             CatalogVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
   inventoryPolicy     InventorySkuPolicy?
   inventoryItems      InventoryItem[]
   stockMovements      StockMovement[]
   deviceUnits         DeviceUnit[]
   orderItems          OrderItem[]
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   @@index([status, updatedAt])
   @@index([deletedAt, status])
 }
 
 model SpecificationGroup {
-  id          String             @id @default(cuid())
-  code        String             @unique
-  name        String
-  description String?
-  sortOrder   Int                @default(0)
-  isActive    Boolean            @default(true)
-  deletedAt   DateTime?
-  attributes  ProductAttribute[]
-  categories  CategorySpecificationGroup[]
+  id                 String                       @id @default(cuid())
+  code               String                       @unique
+  name               String
+  description        String?
+  sortOrder          Int                          @default(0)
+  isActive           Boolean                      @default(true)
+  deletedAt          DateTime?
+  attributes         ProductAttribute[]
+  categories         CategorySpecificationGroup[]
   categoryAttributes CategoryAttribute[]
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
 
   @@index([isActive, sortOrder])
   @@index([deletedAt, isActive])
 }
 
 model ProductAttribute {
-  id          String                    @id @default(cuid())
-  groupId     String?
-  code        String                    @unique
-  name        String
-  valueType   ProductAttributeValueType
-  unitCode    String?
-  description String?
-  isFilterable Boolean                  @default(false)
-  isSearchable Boolean                  @default(true)
-  isRequiredDefault Boolean             @default(false)
-  sortOrder   Int                       @default(0)
-  isActive    Boolean                   @default(true)
-  deletedAt   DateTime?
-  group       SpecificationGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  values      AttributeValue[]
+  id                  String                    @id @default(cuid())
+  groupId             String?
+  code                String                    @unique
+  name                String
+  valueType           ProductAttributeValueType
+  unitCode            String?
+  description         String?
+  isFilterable        Boolean                   @default(false)
+  isSearchable        Boolean                   @default(true)
+  isRequiredDefault   Boolean                   @default(false)
+  sortOrder           Int                       @default(0)
+  isActive            Boolean                   @default(true)
+  deletedAt           DateTime?
+  group               SpecificationGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  values              AttributeValue[]
   categoryAssignments CategoryAttribute[]
-  specifications ProductSpecification[]
-  createdAt   DateTime                  @default(now())
-  updatedAt   DateTime                  @updatedAt
+  specifications      ProductSpecification[]
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
 
   @@index([groupId, isActive, sortOrder])
   @@index([deletedAt, isActive])
 }
 
 model AttributeValue {
-  id          String           @id @default(cuid())
-  attributeId String
-  code        String
-  label       String
-  sortOrder   Int              @default(0)
-  isActive    Boolean          @default(true)
-  metadata    Json?
-  deletedAt   DateTime?
-  attribute   ProductAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  id             String                 @id @default(cuid())
+  attributeId    String
+  code           String
+  label          String
+  sortOrder      Int                    @default(0)
+  isActive       Boolean                @default(true)
+  metadata       Json?
+  deletedAt      DateTime?
+  attribute      ProductAttribute       @relation(fields: [attributeId], references: [id], onDelete: Cascade)
   specifications ProductSpecification[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@unique([attributeId, code])
   @@index([attributeId, isActive, sortOrder])
@@ -775,18 +866,18 @@ model CategorySpecificationGroup {
 }
 
 model CategoryAttribute {
-  id          String             @id @default(cuid())
-  categoryId  String
-  attributeId String
-  groupId     String?
-  isRequired  Boolean            @default(false)
-  isFilterable Boolean            @default(false)
-  sortOrder   Int                @default(0)
-  category    CatalogCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  attribute   ProductAttribute   @relation(fields: [attributeId], references: [id], onDelete: Cascade)
-  group       SpecificationGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id           String              @id @default(cuid())
+  categoryId   String
+  attributeId  String
+  groupId      String?
+  isRequired   Boolean             @default(false)
+  isFilterable Boolean             @default(false)
+  sortOrder    Int                 @default(0)
+  category     CatalogCategory     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attribute    ProductAttribute    @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  group        SpecificationGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@unique([categoryId, attributeId])
   @@index([groupId, sortOrder])
@@ -847,29 +938,29 @@ model ProductWorkflowEvent {
 }
 
 model ProductImportBatch {
-  id                String              @id @default(cuid())
+  id                String                @id @default(cuid())
   sourceFileId      String?
   requestedById     String?
   format            ProductImportFormat
-  status            ProductImportStatus @default(UPLOADED)
+  status            ProductImportStatus   @default(UPLOADED)
   originalFileName  String
   sourceChecksum    String?
-  mappingVersion    String              @default("v1")
-  totalRows         Int                 @default(0)
-  validRows         Int                 @default(0)
-  failedRows        Int                 @default(0)
+  mappingVersion    String                @default("v1")
+  totalRows         Int                   @default(0)
+  validRows         Int                   @default(0)
+  failedRows        Int                   @default(0)
   validationSummary Json?
   errorReport       Json?
   applyAttemptToken String?
   applyStartedAt    DateTime?
   appliedAt         DateTime?
   rolledBackAt      DateTime?
-  sourceFile        MediaFile?          @relation("ProductImportSourceFile", fields: [sourceFileId], references: [id], onDelete: SetNull)
-  requestedBy       User?               @relation("ProductImportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  sourceFile        MediaFile?            @relation("ProductImportSourceFile", fields: [sourceFileId], references: [id], onDelete: SetNull)
+  requestedBy       User?                 @relation("ProductImportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
   rows              ProductImportRow[]
   changes           ProductImportChange[]
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([status, createdAt])
   @@index([status, applyStartedAt])
@@ -896,37 +987,37 @@ model ProductImportRow {
 }
 
 model ProductImportChange {
-  id             String             @id @default(cuid())
+  id             String                 @id @default(cuid())
   importBatchId  String
   entityType     String
   entityId       String
   action         ProductImportRowAction
   beforeSnapshot Json?
   afterSnapshot  Json?
-  importBatch    ProductImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  importBatch    ProductImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@index([importBatchId, entityType])
 }
 
 model Branch {
-  id          String            @id @default(cuid())
-  code        String            @unique
-  name        String
-  kind        BranchKind        @default(STORE)
-  status      BranchStatus      @default(ACTIVE)
-  city        String?
-  address     String?
-  phone       String?
-  isActive    Boolean           @default(true)
-  isPickupEnabled Boolean        @default(true)
-  inventory   BranchInventory[]
-  warehouses  Warehouse[]
-  orderAllocations OrderAllocation[]
+  id                String             @id @default(cuid())
+  code              String             @unique
+  name              String
+  kind              BranchKind         @default(STORE)
+  status            BranchStatus       @default(ACTIVE)
+  city              String?
+  address           String?
+  phone             String?
+  isActive          Boolean            @default(true)
+  isPickupEnabled   Boolean            @default(true)
+  inventory         BranchInventory[]
+  warehouses        Warehouse[]
+  orderAllocations  OrderAllocation[]
   orderFulfillments OrderFulfillment[]
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([isActive, kind])
   @@index([status, kind])
@@ -946,17 +1037,17 @@ model BranchInventory {
 }
 
 model Warehouse {
-  id        String          @id @default(cuid())
-  branchId  String
-  code      String
-  name      String
-  status    WarehouseStatus @default(ACTIVE)
-  branch    Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  locations InventoryLocation[]
-  orderAllocations OrderAllocation[]
+  id                String              @id @default(cuid())
+  branchId          String
+  code              String
+  name              String
+  status            WarehouseStatus     @default(ACTIVE)
+  branch            Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  locations         InventoryLocation[]
+  orderAllocations  OrderAllocation[]
   orderFulfillments OrderFulfillment[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@unique([branchId, code])
   @@index([branchId, status])
@@ -991,21 +1082,21 @@ model InventorySkuPolicy {
 }
 
 model InventoryItem {
-  id                String               @id @default(cuid())
+  id                String                 @id @default(cuid())
   warehouseId       String
   locationId        String
   skuId             String
-  quantity          Int                  @default(0)
-  reservedQuantity  Int                  @default(0)
-  availableQuantity Int                  @default(0)
-  version           Int                  @default(1)
-  location          InventoryLocation    @relation("InventoryItemLocation", fields: [locationId, warehouseId], references: [id, warehouseId], onDelete: Restrict)
-  sku               ProductSku           @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  quantity          Int                    @default(0)
+  reservedQuantity  Int                    @default(0)
+  availableQuantity Int                    @default(0)
+  version           Int                    @default(1)
+  location          InventoryLocation      @relation("InventoryItemLocation", fields: [locationId, warehouseId], references: [id, warehouseId], onDelete: Restrict)
+  sku               ProductSku             @relation(fields: [skuId], references: [id], onDelete: Restrict)
   deviceUnits       DeviceUnit[]
   reservations      InventoryReservation[]
   orderAllocations  OrderAllocation[]
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   @@unique([locationId, skuId])
   @@index([warehouseId, skuId])
@@ -1013,7 +1104,7 @@ model InventoryItem {
 }
 
 model StockMovement {
-  id                  String                       @id @default(cuid())
+  id                  String                        @id @default(cuid())
   skuId               String
   fromLocationId      String?
   toLocationId        String?
@@ -1021,14 +1112,14 @@ model StockMovement {
   type                StockMovementType
   adjustmentDirection InventoryAdjustmentDirection?
   reference           String?
-  idempotencyKey      String                       @unique
+  idempotencyKey      String                        @unique
   performedById       String?
   metadata            Json?
-  sku                 ProductSku                   @relation(fields: [skuId], references: [id], onDelete: Restrict)
-  fromLocation        InventoryLocation?           @relation("StockMovementFromLocation", fields: [fromLocationId], references: [id], onDelete: Restrict)
-  toLocation          InventoryLocation?           @relation("StockMovementToLocation", fields: [toLocationId], references: [id], onDelete: Restrict)
-  performedBy         User?                        @relation("StockMovementActor", fields: [performedById], references: [id], onDelete: SetNull)
-  createdAt           DateTime                     @default(now())
+  sku                 ProductSku                    @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  fromLocation        InventoryLocation?            @relation("StockMovementFromLocation", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocation          InventoryLocation?            @relation("StockMovementToLocation", fields: [toLocationId], references: [id], onDelete: Restrict)
+  performedBy         User?                         @relation("StockMovementActor", fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime                      @default(now())
 
   @@index([skuId, createdAt])
   @@index([fromLocationId, createdAt])
@@ -1037,21 +1128,21 @@ model StockMovement {
 }
 
 model DeviceUnit {
-  id                String           @id @default(cuid())
+  id                String                  @id @default(cuid())
   skuId             String
   inventoryItemId   String?
   reservationId     String?
-  imei              String?          @unique
-  serialNumber      String?          @unique
-  status            DeviceUnitStatus @default(AVAILABLE)
+  imei              String?                 @unique
+  serialNumber      String?                 @unique
+  status            DeviceUnitStatus        @default(AVAILABLE)
   warrantyExpiresAt DateTime?
   metadata          Json?
-  sku               ProductSku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
-  inventoryItem     InventoryItem?   @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
-  reservation       InventoryReservation? @relation("InventoryReservationDeviceUnits", fields: [reservationId], references: [id], onDelete: Restrict)
+  sku               ProductSku              @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  inventoryItem     InventoryItem?          @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  reservation       InventoryReservation?   @relation("InventoryReservationDeviceUnits", fields: [reservationId], references: [id], onDelete: Restrict)
   orderAssignments  OrderDeviceAssignment[]
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   @@index([skuId, status])
   @@index([inventoryItemId, status])
@@ -1059,21 +1150,21 @@ model DeviceUnit {
 }
 
 model InventoryReservation {
-  id             String                     @id @default(cuid())
-  inventoryItemId String
-  quantity       Int
-  status         InventoryReservationStatus @default(ACTIVE)
-  expiresAt      DateTime?
-  reference      String?
-  idempotencyKey String                     @unique
-  createdById    String?
-  inventoryItem  InventoryItem              @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
-  createdBy      User?                      @relation("InventoryReservationCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  deviceUnits    DeviceUnit[]               @relation("InventoryReservationDeviceUnits")
-  orderAllocations OrderAllocation[]
-  orderDeviceAssignments OrderDeviceAssignment[] @relation("OrderDeviceAssignmentReservation")
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
+  id                     String                     @id @default(cuid())
+  inventoryItemId        String
+  quantity               Int
+  status                 InventoryReservationStatus @default(ACTIVE)
+  expiresAt              DateTime?
+  reference              String?
+  idempotencyKey         String                     @unique
+  createdById            String?
+  inventoryItem          InventoryItem              @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  createdBy              User?                      @relation("InventoryReservationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  deviceUnits            DeviceUnit[]               @relation("InventoryReservationDeviceUnits")
+  orderAllocations       OrderAllocation[]
+  orderDeviceAssignments OrderDeviceAssignment[]    @relation("OrderDeviceAssignmentReservation")
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
 
   @@index([inventoryItemId, status, expiresAt])
   @@index([reference, status])
@@ -1112,42 +1203,43 @@ model StorefrontCartItem {
 }
 
 model Order {
-  id                    String                 @id @default(cuid())
-  orderNumber           String                 @unique
-  source                OrderSource
-  type                  OrderType
-  customerId            String?
-  sourceCartId          String?                @unique
-  guestTokenHash        String?
-  customerSnapshot      Json
-  billingAddressSnapshot Json?
+  id                      String                   @id @default(cuid())
+  orderNumber             String                   @unique
+  source                  OrderSource
+  type                    OrderType
+  customerId              String?
+  sourceCartId            String?                  @unique
+  guestTokenHash          String?
+  customerSnapshot        Json
+  billingAddressSnapshot  Json?
   shippingAddressSnapshot Json?
-  currency              String                 @default("IRR")
-  subtotalRials         BigInt
-  discountTotalRials    BigInt                 @default(0)
-  taxTotalRials         BigInt                 @default(0)
-  shippingTotalRials    BigInt                 @default(0)
-  feeTotalRials         BigInt                 @default(0)
-  grandTotalRials       BigInt
-  paymentStatus         OrderPaymentStatus     @default(UNPAID)
-  fulfillmentStatus     OrderFulfillmentStatus @default(UNFULFILLED)
-  fulfillmentMethod     OrderFulfillmentMethod
-  orderStatus           OrderStatus            @default(DRAFT)
-  allocationStatus      OrderAllocationStatus  @default(UNALLOCATED)
-  version               Int                    @default(1)
-  customer              User?                  @relation("OrderCustomer", fields: [customerId], references: [id], onDelete: SetNull)
-  sourceCart            StorefrontCart?        @relation("OrderSourceCart", fields: [sourceCartId], references: [id], onDelete: Restrict)
-  items                 OrderItem[]
-  allocations           OrderAllocation[]
-  payments              OrderPayment[]
-  fulfillment           OrderFulfillment?
-  statusHistory         OrderStatusHistory[]
-  notes                 OrderNote[]
-  idempotencyRecords    OrderIdempotencyRecord[]
-  outboxEvents          OrderOutboxEvent[]
-  deviceAssignments     OrderDeviceAssignment[]
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  currency                String                   @default("IRR")
+  subtotalRials           BigInt
+  discountTotalRials      BigInt                   @default(0)
+  taxTotalRials           BigInt                   @default(0)
+  shippingTotalRials      BigInt                   @default(0)
+  feeTotalRials           BigInt                   @default(0)
+  grandTotalRials         BigInt
+  paymentStatus           OrderPaymentStatus       @default(UNPAID)
+  fulfillmentStatus       OrderFulfillmentStatus   @default(UNFULFILLED)
+  fulfillmentMethod       OrderFulfillmentMethod
+  orderStatus             OrderStatus              @default(DRAFT)
+  allocationStatus        OrderAllocationStatus    @default(UNALLOCATED)
+  version                 Int                      @default(1)
+  customer                User?                    @relation("OrderCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  sourceCart              StorefrontCart?          @relation("OrderSourceCart", fields: [sourceCartId], references: [id], onDelete: Restrict)
+  items                   OrderItem[]
+  allocations             OrderAllocation[]
+  payments                OrderPayment[]
+  canonicalPayment        Payment?                 @relation("CanonicalOrderPayment")
+  fulfillment             OrderFulfillment?
+  statusHistory           OrderStatusHistory[]
+  notes                   OrderNote[]
+  idempotencyRecords      OrderIdempotencyRecord[]
+  outboxEvents            OrderOutboxEvent[]
+  deviceAssignments       OrderDeviceAssignment[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
   @@index([customerId, createdAt])
   @@index([guestTokenHash, createdAt])
@@ -1160,29 +1252,29 @@ model Order {
 }
 
 model OrderItem {
-  id                    String         @id @default(cuid())
-  orderId               String
-  productId             String
-  variantId             String
-  productSkuId          String
-  sku                   String
-  productName           String
-  variantName           String?
-  quantity              Int
-  unitPriceRials        BigInt
-  discountAmountRials   BigInt         @default(0)
-  taxAmountRials        BigInt         @default(0)
-  lineTotalRials        BigInt
-  warrantySnapshot      Json?
-  attributesSnapshot    Json?
-  order                 Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product               CatalogProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variant               CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  productSku            ProductSku     @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
-  allocations           OrderAllocation[]
-  deviceAssignments     OrderDeviceAssignment[]
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
+  id                  String                  @id @default(cuid())
+  orderId             String
+  productId           String
+  variantId           String
+  productSkuId        String
+  sku                 String
+  productName         String
+  variantName         String?
+  quantity            Int
+  unitPriceRials      BigInt
+  discountAmountRials BigInt                  @default(0)
+  taxAmountRials      BigInt                  @default(0)
+  lineTotalRials      BigInt
+  warrantySnapshot    Json?
+  attributesSnapshot  Json?
+  order               Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             CatalogProduct          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant             CatalogVariant          @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  productSku          ProductSku              @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
+  allocations         OrderAllocation[]
+  deviceAssignments   OrderDeviceAssignment[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   @@index([orderId, createdAt])
   @@index([variantId])
@@ -1190,24 +1282,24 @@ model OrderItem {
 }
 
 model OrderAllocation {
-  id              String                @id @default(cuid())
-  orderId         String
-  orderItemId     String
-  branchId        String
-  warehouseId     String
-  inventoryItemId String
-  reservationId   String?               @unique
-  quantity        Int
-  status          OrderAllocationStatus @default(UNALLOCATED)
-  order           Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem       OrderItem             @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  warehouse       Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  inventoryItem   InventoryItem         @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
-  reservation     InventoryReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  id                String                  @id @default(cuid())
+  orderId           String
+  orderItemId       String
+  branchId          String
+  warehouseId       String
+  inventoryItemId   String
+  reservationId     String?                 @unique
+  quantity          Int
+  status            OrderAllocationStatus   @default(UNALLOCATED)
+  order             Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem         OrderItem               @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  branch            Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  inventoryItem     InventoryItem           @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  reservation       InventoryReservation?   @relation(fields: [reservationId], references: [id], onDelete: Restrict)
   deviceAssignments OrderDeviceAssignment[]
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
   @@index([orderId, status])
   @@index([orderItemId, status])
@@ -1223,24 +1315,24 @@ model OrderAllocation {
  * released unit to be assigned to a later order.
  */
 model OrderDeviceAssignment {
-  id                 String                      @id @default(cuid())
-  orderId            String
-  orderItemId        String
-  orderAllocationId  String
-  deviceUnitId       String
-  reservationId      String
-  imeiSnapshot       String?
+  id                   String                      @id @default(cuid())
+  orderId              String
+  orderItemId          String
+  orderAllocationId    String
+  deviceUnitId         String
+  reservationId        String
+  imeiSnapshot         String?
   serialNumberSnapshot String?
-  status             OrderDeviceAssignmentStatus @default(RESERVED)
-  releasedAt         DateTime?
-  fulfilledAt        DateTime?
-  order              Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem          OrderItem                   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  allocation         OrderAllocation             @relation(fields: [orderAllocationId], references: [id], onDelete: Cascade)
-  deviceUnit         DeviceUnit                  @relation(fields: [deviceUnitId], references: [id], onDelete: Restrict)
-  reservation        InventoryReservation        @relation("OrderDeviceAssignmentReservation", fields: [reservationId], references: [id], onDelete: Restrict)
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  status               OrderDeviceAssignmentStatus @default(RESERVED)
+  releasedAt           DateTime?
+  fulfilledAt          DateTime?
+  order                Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem            OrderItem                   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  allocation           OrderAllocation             @relation(fields: [orderAllocationId], references: [id], onDelete: Cascade)
+  deviceUnit           DeviceUnit                  @relation(fields: [deviceUnitId], references: [id], onDelete: Restrict)
+  reservation          InventoryReservation        @relation("OrderDeviceAssignmentReservation", fields: [reservationId], references: [id], onDelete: Restrict)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
 
   @@unique([orderAllocationId, deviceUnitId])
   @@index([orderId, status])
@@ -1266,6 +1358,193 @@ model OrderPayment {
   @@unique([orderId, idempotencyKey])
   @@index([orderId, status, createdAt])
   @@index([status, createdAt])
+}
+
+/**
+ * Canonical Phase 08 payment aggregate. The amount and currency are copied
+ * only from the persisted Order commercial snapshot and never from a browser.
+ */
+model Payment {
+  id                    String                        @id @default(cuid())
+  orderId               String                        @unique
+  paymentNumber         String                        @unique
+  currency              String                        @default("IRR") @db.VarChar(3)
+  amountRials           BigInt
+  status                PaymentStatus                 @default(CREATED)
+  method                PaymentMethod                 @default(ONLINE)
+  provider              String                        @db.VarChar(64)
+  version               Int                           @default(1)
+  paidAt                DateTime?
+  failedAt              DateTime?
+  cancelledAt           DateTime?
+  expiresAt             DateTime?
+  order                 Order                         @relation("CanonicalOrderPayment", fields: [orderId], references: [id], onDelete: Restrict)
+  attempts              PaymentAttempt[]
+  transactions          PaymentTransaction[]
+  callbacks             PaymentCallback[]
+  refunds               Refund[]
+  reconciliationRecords PaymentReconciliationRecord[]
+  idempotencyRecords    PaymentIdempotencyRecord[]
+  outboxEvents          PaymentOutboxEvent[]
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+
+  @@index([status, createdAt])
+  @@index([provider, status, createdAt])
+  @@index([createdAt])
+}
+
+model PaymentAttempt {
+  id                String               @id @default(cuid())
+  paymentId         String
+  attemptNumber     Int
+  provider          String               @db.VarChar(64)
+  amountRials       BigInt
+  currency          String               @db.VarChar(3)
+  status            PaymentAttemptStatus @default(CREATED)
+  idempotencyKey    String               @db.VarChar(160)
+  providerAuthority String?              @db.VarChar(200)
+  providerReference String?              @db.VarChar(200)
+  redirectUrl       String?              @db.Text
+  providerStatus    String?              @db.VarChar(80)
+  failureCode       String?              @db.VarChar(120)
+  expiresAt         DateTime?
+  completedAt       DateTime?
+  payment           Payment              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  transactions      PaymentTransaction[]
+  callbacks         PaymentCallback[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([paymentId, attemptNumber])
+  @@unique([paymentId, idempotencyKey])
+  @@unique([provider, providerAuthority])
+  @@unique([provider, providerReference])
+  @@index([paymentId, createdAt])
+  @@index([status, expiresAt])
+}
+
+/**
+ * Append-only provider interaction evidence.
+ */
+model PaymentTransaction {
+  id                String                   @id @default(cuid())
+  paymentId         String
+  attemptId         String?
+  type              PaymentTransactionType
+  amountRials       BigInt
+  status            PaymentTransactionStatus
+  providerReference String?                  @db.VarChar(200)
+  providerCode      String?                  @db.VarChar(120)
+  safeMetadata      Json?
+  occurredAt        DateTime                 @default(now())
+  payment           Payment                  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  attempt           PaymentAttempt?          @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                 @default(now())
+
+  @@index([paymentId, type, providerReference])
+  @@index([paymentId, occurredAt])
+  @@index([attemptId, occurredAt])
+  @@index([type, status, occurredAt])
+}
+
+model PaymentCallback {
+  id               String                          @id @default(cuid())
+  provider         String                          @db.VarChar(64)
+  externalEventId  String                          @db.VarChar(200)
+  payloadHash      String                          @db.Char(64)
+  signatureStatus  PaymentSignatureStatus
+  processingStatus PaymentCallbackProcessingStatus @default(RECEIVED)
+  paymentId        String?
+  attemptId        String?
+  failureCode      String?                         @db.VarChar(120)
+  receivedAt       DateTime                        @default(now())
+  processedAt      DateTime?
+  payment          Payment?                        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  attempt          PaymentAttempt?                 @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+
+  @@unique([provider, externalEventId])
+  @@index([paymentId, receivedAt])
+  @@index([attemptId, receivedAt])
+  @@index([processingStatus, receivedAt])
+}
+
+model Refund {
+  id                String       @id @default(cuid())
+  paymentId         String
+  amountRials       BigInt
+  reason            String       @db.Text
+  status            RefundStatus @default(CREATED)
+  idempotencyKey    String       @db.VarChar(160)
+  providerReference String?      @unique @db.VarChar(200)
+  failureCode       String?      @db.VarChar(120)
+  completedAt       DateTime?
+  payment           Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([paymentId, idempotencyKey])
+  @@index([paymentId, status])
+  @@index([status, createdAt])
+}
+
+model PaymentReconciliationRecord {
+  id               String                                @id @default(cuid())
+  paymentId        String
+  internalStatus   String                                @db.VarChar(80)
+  providerStatus   String                                @db.VarChar(80)
+  differenceType   PaymentReconciliationDifferenceType
+  resolutionStatus PaymentReconciliationResolutionStatus @default(OPEN)
+  safeDetails      Json?
+  checkedAt        DateTime                              @default(now())
+  payment          Payment                               @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdAt        DateTime                              @default(now())
+  updatedAt        DateTime                              @updatedAt
+
+  @@index([paymentId, checkedAt])
+  @@index([resolutionStatus, checkedAt])
+  @@index([differenceType, checkedAt])
+}
+
+model PaymentIdempotencyRecord {
+  id                String   @id @default(cuid())
+  scope             String   @db.VarChar(240)
+  key               String   @db.VarChar(160)
+  requestHash       String   @db.Char(64)
+  responseReference String   @db.VarChar(240)
+  paymentId         String?
+  expiresAt         DateTime
+  payment           Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([scope, key])
+  @@index([paymentId])
+  @@index([expiresAt])
+}
+
+model PaymentOutboxEvent {
+  id               String             @id @default(cuid())
+  paymentId        String
+  eventType        String             @db.VarChar(120)
+  aggregateVersion Int
+  schemaVersion    Int                @default(1)
+  payload          Json
+  occurredAt       DateTime           @default(now())
+  status           PaymentEventStatus @default(PENDING)
+  availableAt      DateTime           @default(now())
+  attempts         Int                @default(0)
+  publishedAt      DateTime?
+  lastError        String?            @db.Text
+  payment          Payment            @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([paymentId, eventType, aggregateVersion])
+  @@index([status, availableAt])
+  @@index([paymentId, occurredAt])
 }
 
 model OrderFulfillment {
@@ -1349,7 +1628,9 @@ model OrderOutboxEvent {
   aggregateVersion Int
   schemaVersion    Int              @default(1)
   payload          Json
-  /** Domain occurrence time is distinct from persistence/update bookkeeping. */
+  /**
+   * Domain occurrence time is distinct from persistence/update bookkeeping.
+   */
   occurredAt       DateTime         @default(now())
   status           OrderEventStatus @default(PENDING)
   availableAt      DateTime         @default(now())
@@ -1386,7 +1667,7 @@ model Notification {
 }
 
 model AuditLog {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   actorId        String?
   actorType      String?
   action         String
@@ -1399,8 +1680,8 @@ model AuditLog {
   metadata       Json?
   beforeSnapshot Json?
   afterSnapshot  Json?
-  actor          User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
-  createdAt      DateTime  @default(now())
+  actor          User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])

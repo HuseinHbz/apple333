@@ -17,6 +17,10 @@ Read [SAFETY-POLICY.md](SAFETY-POLICY.md) before running a mutating command.
 Every future project change must review this directory as required by
 [MAINTENANCE_RULE.md](MAINTENANCE_RULE.md).
 
+Phase 08 payment deployment remains production-blocked. Its simulator is test
+only and its additive migration has disposable-database evidence only. Read
+[PHASE-08-PAYMENTS.md](PHASE-08-PAYMENTS.md) before any payment-related release.
+
 ## Important current release gate
 
 This revision contains the Phase 04.1 initial PIM baseline in
@@ -55,28 +59,29 @@ delete anything automatically.
 
 ## Files
 
-| Path | Purpose |
-| --- | --- |
-| `.env.production.example` | Non-secret production configuration template |
-| `compose.production.yml` | Canonical isolated app, one-shot migration task, nginx, PostgreSQL, Redis, MinIO, and optional observability stack |
-| `RELEASE-GATES.md` | Current migration deployment blocks and evidence required for a future release |
-| `monitoring/` | Private Prometheus scrape/alert rules and Grafana datasource provisioning |
-| `nginx.public-edge.conf.template` | Reviewed opt-in public TLS/redirect configuration template |
-| `systemd/` | Uninstalled, site-reviewed encrypted-backup service/timer templates |
-| `environment-check.sh` | Read-only bare-metal PM2 host, environment, capacity, port, and nginx validation |
-| `install.sh` | Bare-metal PM2 bootstrap from an already-cloned repository |
-| `update.sh` | Safe bare-metal code update with staged standalone build and automatic application-only rollback |
-| `rollback.sh` | Explicit application-only bare-metal rollback from a verified release snapshot |
-| `health-check.sh` | Loopback application, readiness, and database health verification |
-| `nginx.bare-metal.conf.template` | Host-reviewed TLS/reverse-proxy template for the PM2 lane |
-| `bin/preflight.sh` | Read-only ownership/dependency inspection |
-| `bin/install.sh` | Fresh installation after explicit `--apply` |
-| `bin/update.sh` | Safe release update with explicit migration decision |
-| `bin/status.sh` | Read-only Compose/readiness status |
-| `bin/uninstall.sh` | Stop services; data purge is separately confirmed |
-| `bin/purge-unrelated.sh` | Narrow manual cleanup for one named Docker volume/network |
-| `../scripts/backup-db.sh` | Explicit encrypted PostgreSQL backup with checksum-verified secondary copy |
-| `../scripts/restore-db-drill.sh` | Explicit isolated encrypted-backup restore drill |
+| Path                              | Purpose                                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `.env.production.example`         | Non-secret production configuration template                                                                       |
+| `compose.production.yml`          | Canonical isolated app, one-shot migration task, nginx, PostgreSQL, Redis, MinIO, and optional observability stack |
+| `RELEASE-GATES.md`                | Current migration deployment blocks and evidence required for a future release                                     |
+| `PHASE-08-PAYMENTS.md`            | Payment provider, migration, rollback, and production-activation boundary                                          |
+| `monitoring/`                     | Private Prometheus scrape/alert rules and Grafana datasource provisioning                                          |
+| `nginx.public-edge.conf.template` | Reviewed opt-in public TLS/redirect configuration template                                                         |
+| `systemd/`                        | Uninstalled, site-reviewed encrypted-backup service/timer templates                                                |
+| `environment-check.sh`            | Read-only bare-metal PM2 host, environment, capacity, port, and nginx validation                                   |
+| `install.sh`                      | Bare-metal PM2 bootstrap from an already-cloned repository                                                         |
+| `update.sh`                       | Safe bare-metal code update with staged standalone build and automatic application-only rollback                   |
+| `rollback.sh`                     | Explicit application-only bare-metal rollback from a verified release snapshot                                     |
+| `health-check.sh`                 | Loopback application, readiness, and database health verification                                                  |
+| `nginx.bare-metal.conf.template`  | Host-reviewed TLS/reverse-proxy template for the PM2 lane                                                          |
+| `bin/preflight.sh`                | Read-only ownership/dependency inspection                                                                          |
+| `bin/install.sh`                  | Fresh installation after explicit `--apply`                                                                        |
+| `bin/update.sh`                   | Safe release update with explicit migration decision                                                               |
+| `bin/status.sh`                   | Read-only Compose/readiness status                                                                                 |
+| `bin/uninstall.sh`                | Stop services; data purge is separately confirmed                                                                  |
+| `bin/purge-unrelated.sh`          | Narrow manual cleanup for one named Docker volume/network                                                          |
+| `../scripts/backup-db.sh`         | Explicit encrypted PostgreSQL backup with checksum-verified secondary copy                                         |
+| `../scripts/restore-db-drill.sh`  | Explicit isolated encrypted-backup restore drill                                                                   |
 
 ## Server prerequisites
 

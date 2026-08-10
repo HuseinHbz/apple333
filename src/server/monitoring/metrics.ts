@@ -32,6 +32,19 @@ type MetricsStore = {
   orderReservationFailures: Counter;
   orderVersionConflicts: Counter;
   orderIdempotencyReplays: Counter;
+  paymentCommands: Counter<"operation" | "result">;
+  paymentCommandDuration: Histogram<"operation">;
+  paymentVerificationDuration: Histogram;
+  paymentsCreated: Counter;
+  paymentInitializations: Counter;
+  paymentSuccess: Counter;
+  paymentFailure: Counter;
+  paymentCallbacks: Counter<"result">;
+  paymentCallbackDuplicates: Counter;
+  paymentAmountMismatches: Counter;
+  paymentReconciliationMismatches: Counter;
+  refundRequests: Counter;
+  refundSuccess: Counter;
   registry: Registry;
 };
 
@@ -120,6 +133,76 @@ function metricsStore(): MetricsStore {
       help: "Order command idempotency replays.",
       registers: [registry],
     }),
+    paymentCommands: new Counter({
+      name: "apple333_payment_commands_total",
+      help: "Completed payment commands by bounded operation and result labels.",
+      labelNames: ["operation", "result"],
+      registers: [registry],
+    }),
+    paymentCommandDuration: new Histogram({
+      name: "apple333_payment_command_duration_seconds",
+      help: "Internal payment command duration excluding external gateway latency where measured separately.",
+      labelNames: ["operation"],
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      registers: [registry],
+    }),
+    paymentVerificationDuration: new Histogram({
+      name: "apple333_payment_verification_duration_ms",
+      help: "Server-side payment verification duration in milliseconds.",
+      buckets: [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000],
+      registers: [registry],
+    }),
+    paymentsCreated: new Counter({
+      name: "apple333_payments_created_total",
+      help: "Canonical payments created.",
+      registers: [registry],
+    }),
+    paymentInitializations: new Counter({
+      name: "apple333_payment_initializations_total",
+      help: "Successful provider initializations.",
+      registers: [registry],
+    }),
+    paymentSuccess: new Counter({
+      name: "apple333_payment_success_total",
+      help: "Server-verified successful payments.",
+      registers: [registry],
+    }),
+    paymentFailure: new Counter({
+      name: "apple333_payment_failure_total",
+      help: "Failed payment commands.",
+      registers: [registry],
+    }),
+    paymentCallbacks: new Counter({
+      name: "apple333_payment_callback_total",
+      help: "Payment callbacks by canonical processing result.",
+      labelNames: ["result"],
+      registers: [registry],
+    }),
+    paymentCallbackDuplicates: new Counter({
+      name: "apple333_payment_callback_duplicate_total",
+      help: "Idempotently rejected duplicate callbacks.",
+      registers: [registry],
+    }),
+    paymentAmountMismatches: new Counter({
+      name: "apple333_payment_amount_mismatch_total",
+      help: "Provider responses rejected due to money mismatch.",
+      registers: [registry],
+    }),
+    paymentReconciliationMismatches: new Counter({
+      name: "apple333_payment_reconciliation_mismatch_total",
+      help: "Payment reconciliation mismatches.",
+      registers: [registry],
+    }),
+    refundRequests: new Counter({
+      name: "apple333_refund_requests_total",
+      help: "Controlled refund requests.",
+      registers: [registry],
+    }),
+    refundSuccess: new Counter({
+      name: "apple333_refund_success_total",
+      help: "Provider-confirmed refunds.",
+      registers: [registry],
+    }),
   };
 
   metricsGlobal.__apple333MetricsStore = store;
@@ -192,6 +275,70 @@ export function recordOrderLifecycleEvent(
   if (event === "confirmed") store.ordersConfirmed.inc();
   if (event === "cancelled") store.ordersCancelled.inc();
   if (event === "completed") store.ordersCompleted.inc();
+}
+
+export type PaymentMetricOperation =
+  | "create"
+  | "initialize"
+  | "verify"
+  | "callback"
+  | "reconcile"
+  | "refund";
+export type PaymentMetricResult = "success" | "failure" | "replay";
+
+export function recordPaymentCommand(
+  operation: PaymentMetricOperation,
+  result: PaymentMetricResult,
+  durationMs: number,
+): void {
+  const store = metricsStore();
+  store.paymentCommands.inc({ operation, result });
+  store.paymentCommandDuration.observe(
+    { operation },
+    Math.max(durationMs, 0) / 1_000,
+  );
+  if (operation === "verify") {
+    store.paymentVerificationDuration.observe(Math.max(durationMs, 0));
+  }
+  if (result === "failure") store.paymentFailure.inc();
+}
+
+export function recordPaymentCallback(
+  result: "success" | "failure" | "duplicate" | "invalid",
+  durationMs: number,
+): void {
+  const store = metricsStore();
+  store.paymentCallbacks.inc({ result });
+  store.paymentCommandDuration.observe(
+    { operation: "callback" },
+    Math.max(durationMs, 0) / 1_000,
+  );
+  if (result === "duplicate") store.paymentCallbackDuplicates.inc();
+  if (result === "failure" || result === "invalid") store.paymentFailure.inc();
+}
+
+export function recordPaymentLifecycle(
+  event:
+    | "created"
+    | "initialized"
+    | "paid"
+    | "failed"
+    | "amount_mismatch"
+    | "reconciled"
+    | "reconciliation_mismatch"
+    | "refund_requested"
+    | "refunded",
+): void {
+  const store = metricsStore();
+  if (event === "created") store.paymentsCreated.inc();
+  if (event === "initialized") store.paymentInitializations.inc();
+  if (event === "paid") store.paymentSuccess.inc();
+  if (event === "failed") store.paymentFailure.inc();
+  if (event === "amount_mismatch") store.paymentAmountMismatches.inc();
+  if (event === "reconciliation_mismatch")
+    store.paymentReconciliationMismatches.inc();
+  if (event === "refund_requested") store.refundRequests.inc();
+  if (event === "refunded") store.refundSuccess.inc();
 }
 
 export function metricsContentType(): string {

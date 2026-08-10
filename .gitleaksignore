@@ -1,0 +1,4 @@
+# Deterministic, non-production Phase 08 test fixtures. These fingerprints pin
+# the exact commit, path, rule, and line reported by Gitleaks.
+29412a38a816b37b6dfe122119bfebecbcf82fbb:tests/unit/payment-test-environment.test.ts:generic-api-key:13
+29412a38a816b37b6dfe122119bfebecbcf82fbb:tests/unit/payment-simulator.test.ts:generic-api-key:92

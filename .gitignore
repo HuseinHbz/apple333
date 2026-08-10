@@ -6,6 +6,7 @@ __pycache__/
 .env.pim-test
 .env.inventory-test
 .env.order-test
+.env.payment-test
 .env.production
 .env.staging
 *.pem
@@ -18,5 +19,6 @@ node_modules/
 *.tsbuildinfo
 playwright-report/
 test-results/
+artifacts/
 .local-media/
 logs/

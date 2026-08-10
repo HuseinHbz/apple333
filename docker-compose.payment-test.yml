@@ -1,0 +1,87 @@
+name: apple333-phase08-payment-test
+
+services:
+  postgres:
+    container_name: apple333-phase08-payment-postgres
+    image: postgres:16.6-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: apple333_phase08_payment_test
+      POSTGRES_USER: apple333_phase08_payment_test
+      POSTGRES_PASSWORD: ${PAYMENT_TEST_POSTGRES_PASSWORD:?PAYMENT_TEST_POSTGRES_PASSWORD is required}
+      APPLE333_TEST_DB: "1"
+      APPLE333_PAYMENT_TEST_DB: "1"
+      POSTGRES_INITDB_ARGS: --auth=scram-sha-256
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:55435:5432"
+    volumes:
+      - payment_postgres_data:/var/lib/postgresql/data
+    networks: [payment_test]
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    security_opt: ["no-new-privileges:true"]
+    labels: &phase08-labels
+      com.apple333.project: apple333
+      com.apple333.owner: phase-08
+      com.apple333.environment: payment-test
+      com.apple333.disposable: "true"
+
+  redis:
+    container_name: apple333-phase08-payment-redis
+    image: redis:7.4-alpine
+    restart: "no"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:56380:6379"
+    networks: [payment_test]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    security_opt: ["no-new-privileges:true"]
+    labels: *phase08-labels
+
+  payment-simulator:
+    container_name: apple333-phase08-payment-simulator
+    image: redis:7.4-alpine
+    restart: "no"
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        while true; do printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{"service":"APPLE333_PAYMENT_SIMULATOR","environment":"phase-08-disposable","cardDataAccepted":false}\n' | busybox nc -l -p 8080; done
+    ports:
+      - "127.0.0.1:58080:8080"
+    networks: [payment_test]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/index.json"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    labels: *phase08-labels
+
+networks:
+  payment_test:
+    driver: bridge
+    name: apple333_phase08_payment_test_network
+    labels:
+      com.apple333.project: apple333
+      com.apple333.owner: phase-08
+      com.apple333.environment: payment-test
+      com.apple333.disposable: "true"
+
+volumes:
+  payment_postgres_data:
+    name: apple333_phase08_payment_test_postgres_data
+    labels:
+      com.apple333.project: apple333
+      com.apple333.owner: phase-08
+      com.apple333.environment: payment-test
+      com.apple333.disposable: "true"

@@ -1225,6 +1225,9 @@ async function persistNewOrder(
   if (transitioned.count !== 1)
     orderError("ORDER_VERSION_CONFLICT", 409, "سفارش هم‌زمان تغییر کرده است.");
   const version = created.version + 1;
+  // Preserve the Phase 07 financial projection consumed by existing order
+  // views. It is an explicitly unpaid compatibility snapshot; the canonical
+  // Phase 08 Payment aggregate is still the sole authority for gateway state.
   await transaction.orderPayment.create({
     data: {
       orderId: created.id,
@@ -2562,6 +2565,11 @@ export async function recordOrderPayment(
   context: OrderAuditContext,
 ): Promise<OrderDetailDto> {
   requirePermission(actor, "orders.view_financials");
+  orderError(
+    "ORDER_PAYMENT_MANUAL_DISABLED",
+    410,
+    "Manual paid-state recording is disabled; use the canonical Phase 08 payment verification workflow.",
+  );
   const scope = `order:${id}:payment:${actor.id}`;
   const hash = requestHash({ actorId: actor.id, id, input });
   const record = await executeIdempotentOrderCommand({
