@@ -185,8 +185,8 @@ jobs:
           set -Eeuo pipefail
           mkdir -p logs/e2e
           set +e
-          # The Phase 06 inventory and Phase 07 order suites have separate
-          # guarded databases, seeds, and production-mode evidence workflows.
+          # The Phase 06 inventory, Phase 07 order, and Phase 08 payment suites
+          # have separate guarded databases, seeds, and production-mode evidence workflows.
           # Keep generic Quality limited to the standard storefront suite
           # rather than weakening either test-environment boundary.
           pnpm test:e2e:standard 2>&1 | node scripts/sanitize-e2e-log.mjs
