@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/unit/order-*.test.ts",
+    "tests/database/order-persistence.test.ts",
+    "tests/database/order-concurrency.test.ts",
+    "tests/e2e/phase-07-orders.spec.ts"
+  ]
+}

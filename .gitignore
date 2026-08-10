@@ -5,6 +5,7 @@ __pycache__/
 .env.local
 .env.pim-test
 .env.inventory-test
+.env.order-test
 .env.production
 .env.staging
 *.pem

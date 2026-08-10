@@ -32,6 +32,16 @@
     "inventory:reconcile": "node scripts/reconcile-branch-inventory.mjs --fail-on-drift",
     "inventory:test:cleanup": "node scripts/cleanup-phase06-test-environment.mjs --dry-run",
     "typecheck:phase-06-tests": "tsc --project tsconfig.phase06-tests.json",
+    "order:test:preflight": "node scripts/verify-order-test-environment.mjs",
+    "order:test:migrate": "node scripts/run-order-test-migrations.mjs",
+    "order:test:seed": "node scripts/seed-e2e-orders.mjs",
+    "test:order-db": "node scripts/run-order-database-tests.mjs",
+    "test:e2e:orders": "node scripts/run-order-e2e-tests.mjs",
+    "order:benchmark": "node scripts/benchmark-orders.mjs",
+    "order:reconcile": "node scripts/reconcile-orders.mjs --fail-on-drift",
+    "order:test:cleanup": "node scripts/cleanup-phase07-test-environment.mjs",
+    "order:evidence:metadata": "node scripts/write-order-evidence-metadata.mjs",
+    "typecheck:phase-07-tests": "tsc --project tsconfig.phase07-tests.json",
     "prompt:validate": "tsc --project tsconfig.prompt-validator.json && node .prompt-validator/scripts/validate-enterprise-prompts.js",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate"
@@ -69,7 +79,7 @@
     "eslint-config-next": "15.5.21",
     "jsdom": "26.1.0",
     "lighthouse": "^12.8.2",
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "prettier": "3.5.3",
     "prisma": "6.7.0",
     "tailwindcss": "3.4.17",
@@ -79,10 +89,11 @@
   "pnpm": {
     "overrides": {
       "@auth/core": "0.41.3",
-      "brace-expansion": "5.0.8",
-      "fast-uri": "3.1.4",
+      "brace-expansion": "5.0.9",
+      "fast-uri": "3.1.5",
+      "nanoid": "3.3.17",
       "sharp": "0.35.0",
-      "postcss": "8.5.18"
+      "postcss": "8.5.23"
     }
   }
 }
