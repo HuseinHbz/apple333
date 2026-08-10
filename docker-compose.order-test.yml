@@ -1,0 +1,68 @@
+name: apple333-phase07-order-test
+
+# Disposable PostgreSQL for Phase 07 Order Management only. Start it
+# explicitly with:
+# docker compose --env-file .env.order-test -f docker-compose.order-test.yml up -d
+#
+# This Compose project is intentionally isolated from local development,
+# staging, and production resources. Its role, database, port, network, and
+# volume are owned exclusively by the Phase 07 test environment.
+services:
+  apple333-phase07-order-postgres:
+    container_name: apple333-phase07-order-postgres
+    image: postgres:16.6-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: apple333_phase07_order_test
+      POSTGRES_USER: apple333_phase07_order_test
+      POSTGRES_PASSWORD: ${ORDER_TEST_POSTGRES_PASSWORD:?ORDER_TEST_POSTGRES_PASSWORD is required}
+      APPLE333_TEST_DB: "1"
+      APPLE333_ORDER_TEST_DB: "1"
+      POSTGRES_INITDB_ARGS: --auth=scram-sha-256
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:55434:5432"
+    volumes:
+      - apple333_phase07_order_test_postgres_data:/var/lib/postgresql/data
+    networks:
+      - phase07_order_test
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: order-test
+      com.apple333.purpose: phase-07-isolated-order-database
+      com.apple333.owner: phase-07
+      com.apple333.resource: apple333-phase07-order-postgres
+      com.apple333.disposable: "true"
+
+networks:
+  phase07_order_test:
+    # Docker Desktop cannot forward a loopback-published port from an
+    # `internal` network. The dedicated bridge and loopback-only host binding
+    # keep this disposable test target isolated without relying on DNS.
+    driver: bridge
+    name: apple333_phase07_order_test_network
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: order-test
+      com.apple333.owner: phase-07
+      com.apple333.disposable: "true"
+
+volumes:
+  apple333_phase07_order_test_postgres_data:
+    name: apple333_phase07_order_test_postgres_data
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: order-test
+      com.apple333.purpose: phase-07-isolated-order-database
+      com.apple333.owner: phase-07
+      com.apple333.resource: apple333-phase07-order-postgres-data
+      com.apple333.disposable: "true"

@@ -58,7 +58,9 @@ compose up -d postgres redis minio
 wait_for_service_health postgres 40
 wait_for_service_health redis 40
 wait_for_service_health minio 40
-[[ "$(database_classification)" == "OWNED_CURRENT" ]] || die "Database marker no longer proves ownership of this deployment"
+log "Re-checking running containers, data volumes, and database ownership before release work."
+"$SCRIPT_DIR/preflight.sh" --assert-owned
+[[ "$(database_classification)" == "OWNED_CURRENT" ]] || die "Database marker no longer proves ownership of this running deployment"
 
 migration_started=false
 on_error() {

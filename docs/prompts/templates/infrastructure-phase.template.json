@@ -1,0 +1,132 @@
+{
+  "schema": "https://apple333.ir/schemas/enterprise-phase-prompt.schema.json",
+  "schemaVersion": "1.0",
+  "phase": {
+    "id": "phase-07-infrastructure-template",
+    "number": "07",
+    "name": "Infrastructure planning template",
+    "category": "infrastructure"
+  },
+  "title": "Apple333 infrastructure phase",
+  "objective": "Plan or implement an approved isolated infrastructure change with no production-server access and no application feature expansion.",
+  "scope": {
+    "inScope": [
+      "Review deployment, CI, environment, observability, or reverse-proxy configuration in the approved paths.",
+      "Create safe local validation and operator documentation."
+    ],
+    "outOfScope": [
+      "Direct production-server access.",
+      "Database migration or data operations.",
+      "Unrelated application feature work."
+    ],
+    "allowedPaths": [
+      "deploy/**",
+      "docker/**",
+      ".github/workflows/**",
+      "docs/**"
+    ],
+    "forbiddenPaths": [
+      "src/modules/**",
+      "prisma/migrations/**",
+      ".env*"
+    ]
+  },
+  "constraints": {
+    "productionAccess": false,
+    "databaseChanges": "none",
+    "destructiveOperations": false,
+    "secretsPolicy": "approved-secret-manager-only",
+    "commitPolicy": "user-approved"
+  },
+  "architecture": {
+    "decisions": [
+      {
+        "title": "Separate environment ownership",
+        "rationale": "Development, staging, and production must use isolated configuration, secrets, data services, and release authority."
+      }
+    ],
+    "dependencies": [
+      "Approved deployment runbook",
+      "Host operator confirmation for any external change"
+    ]
+  },
+  "implementation": {
+    "steps": [
+      {
+        "id": "AUDIT",
+        "description": "Inspect the affected local configuration and document the operational boundary.",
+        "expectedOutcome": "A change plan that does not assume production access."
+      },
+      {
+        "id": "HARDEN",
+        "description": "Add or update safe configuration, validation, and rollback documentation only in approved paths.",
+        "expectedOutcome": "A reviewable infrastructure change with explicit safety controls."
+      },
+      {
+        "id": "VERIFY",
+        "description": "Run local syntax and application quality checks that do not contact production.",
+        "expectedOutcome": "Local evidence for operator review."
+      }
+    ],
+    "nonGoals": [
+      "Do not connect to a production host.",
+      "Do not deploy, restart, or alter live services."
+    ]
+  },
+  "validation": {
+    "commands": [
+      {
+        "command": "pnpm typecheck",
+        "purpose": "Verify TypeScript-based local tooling.",
+        "required": true
+      },
+      {
+        "command": "pnpm lint",
+        "purpose": "Verify repository lint rules.",
+        "required": true
+      }
+    ],
+    "manualChecks": [
+      "Review operator-facing safety instructions and rollback boundaries.",
+      "Confirm no environment file or live credential was accessed."
+    ],
+    "prohibitedCommands": [
+      "docker system prune",
+      "prisma migrate reset",
+      "git reset --hard"
+    ]
+  },
+  "deliverables": [
+    {
+      "path": "docs/phases/<phase>/operations.md",
+      "kind": "documentation",
+      "description": "Documents prerequisites, validation, rollback, and operator-owned production steps."
+    }
+  ],
+  "risks": [
+    {
+      "severity": "high",
+      "description": "Infrastructure edits can disrupt runtime availability or expose secrets when applied without operator review.",
+      "mitigation": "Keep validation local, require human approval, and leave all production actions to the designated operator."
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-01",
+      "statement": "The infrastructure change is locally validated and documents clear production handoff steps."
+    },
+    {
+      "id": "AC-02",
+      "statement": "No production access, database change, or secret exposure occurs."
+    }
+  ],
+  "execution": {
+    "branch": "chore/infrastructure-phase",
+    "workMode": "stabilization",
+    "requiresHumanApproval": true,
+    "stopConditions": [
+      "Stop when a host, cloud account, certificate, secret, or live service action is required.",
+      "Stop when the proposed change would affect a path outside the approved infrastructure scope."
+    ]
+  }
+}

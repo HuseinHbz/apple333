@@ -14,11 +14,26 @@ const credentialsSchema = z.object({
 
 const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
 
+/**
+ * Production sessions always use Secure cookies. The lone exception is the
+ * explicitly guarded, loopback-only standalone E2E runtime: it must use HTTP
+ * so Playwright can verify the production artifact without a real certificate.
+ * Both the runtime-evidence marker and an owned disposable-database marker are
+ * required, so an ordinary production host cannot opt out accidentally.
+ */
+const isGuardedLoopbackE2eRuntime = process.env.APPLE333_E2E_RUNTIME_EVIDENCE === '1'
+  && (process.env.APPLE333_E2E_TEST_DB === '1' || process.env.APPLE333_ORDER_E2E_TEST_DB === '1');
+
+export const usesSecureSessionCookie = process.env.NODE_ENV === 'production' && !isGuardedLoopbackE2eRuntime;
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
   ...(authSecret ? { secret: authSecret } : {}),
   session: {
-    strategy: 'database',
+    // NextAuth's Credentials provider can only establish JWT sessions. The
+    // Prisma adapter remains available for the shared user model, but a
+    // database session strategy would make every credential sign-in fail.
+    strategy: 'jwt',
     maxAge: 60 * 60 * 8,
     updateAge: 60 * 30
   },
@@ -27,18 +42,18 @@ export const authOptions: NextAuthOptions = {
   },
   cookies: {
     sessionToken: {
-      name: process.env.NODE_ENV === 'production' ? '__Secure-apple333.session' : 'apple333.session',
+      name: usesSecureSessionCookie ? '__Secure-apple333.session' : 'apple333.session',
       options: {
         httpOnly: true,
         path: '/',
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
+        secure: usesSecureSessionCookie
       }
     }
   },
   providers: [
     CredentialsProvider({
-      name: 'Admin credentials',
+      name: 'Apple333 credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' }
@@ -51,27 +66,33 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email.toLowerCase() },
-          include: { adminProfile: true }
+          include: { adminProfile: true, profile: true }
         });
 
-        if (
-          !user ||
-          user.status !== 'ACTIVE' ||
-          !user.adminProfile?.isActive ||
-          !user.adminProfile.passwordHash
-        ) {
+        if (!user || user.status !== 'ACTIVE') {
           return null;
         }
 
-        const passwordMatches = await compare(parsed.data.password, user.adminProfile.passwordHash);
+        // Administrative accounts retain their dedicated profile and are
+        // disabled when that profile is inactive. Customer accounts use only
+        // the customer profile credential; neither type can borrow the other
+        // account's authority after sign-in.
+        const passwordHash = user.adminProfile?.isActive
+          ? user.adminProfile.passwordHash
+          : user.profile?.passwordHash;
+        if (!passwordHash) return null;
+
+        const passwordMatches = await compare(parsed.data.password, passwordHash);
         if (!passwordMatches) {
           return null;
         }
 
-        await prisma.adminUser.update({
-          where: { id: user.adminProfile.id },
-          data: { lastLoginAt: new Date() }
-        });
+        if (user.adminProfile?.isActive) {
+          await prisma.adminUser.update({
+            where: { id: user.adminProfile.id },
+            data: { lastLoginAt: new Date() }
+          });
+        }
 
         return {
           id: user.id,
@@ -83,9 +104,9 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
       }
       return session;
     }

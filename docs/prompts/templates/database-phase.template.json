@@ -1,0 +1,131 @@
+{
+  "schema": "https://apple333.ir/schemas/enterprise-phase-prompt.schema.json",
+  "schemaVersion": "1.0",
+  "phase": {
+    "id": "phase-06-database-template",
+    "number": "06",
+    "name": "Database planning template",
+    "category": "database"
+  },
+  "title": "Apple333 database phase",
+  "objective": "Produce a reviewable, additive database change plan without connecting to, migrating, or modifying any database.",
+  "scope": {
+    "inScope": [
+      "Document schema intent, ownership, compatibility, and rollback assumptions.",
+      "Validate Prisma schema syntax only with a non-secret inert connection value when required."
+    ],
+    "outOfScope": [
+      "Production database access.",
+      "Migration execution, db push, reset, seed, drop, truncate, or data repair.",
+      "Automatic legacy database adoption."
+    ],
+    "allowedPaths": [
+      "docs/**",
+      "prisma/schema.prisma",
+      "tests/**"
+    ],
+    "forbiddenPaths": [
+      "prisma/migrations/**",
+      "deploy/**",
+      ".env*"
+    ]
+  },
+  "constraints": {
+    "productionAccess": false,
+    "databaseChanges": "plan-only",
+    "destructiveOperations": false,
+    "secretsPolicy": "never-read-or-print",
+    "commitPolicy": "user-approved"
+  },
+  "architecture": {
+    "decisions": [
+      {
+        "title": "Plan before mutation",
+        "rationale": "Database work requires ownership proof, migration review, backup evidence, compatibility analysis, and explicit release authority before execution."
+      }
+    ],
+    "dependencies": [
+      "Reviewed data ownership evidence",
+      "Approved migration and rollback procedure"
+    ]
+  },
+  "implementation": {
+    "steps": [
+      {
+        "id": "INVENTORY",
+        "description": "Record the intended model changes, affected entities, and known compatibility assumptions.",
+        "expectedOutcome": "A scoped migration design with no target database connection."
+      },
+      {
+        "id": "REVIEW_PLAN",
+        "description": "Document migration ownership, backup, rollout, and rollback requirements for human review.",
+        "expectedOutcome": "An approvable database change plan."
+      },
+      {
+        "id": "VALIDATE_STATICALLY",
+        "description": "Run schema/client validation only where it performs no database mutation or connection.",
+        "expectedOutcome": "Static evidence that the plan is syntactically coherent."
+      }
+    ],
+    "nonGoals": [
+      "Do not execute a migration.",
+      "Do not inspect production data or credentials."
+    ]
+  },
+  "validation": {
+    "commands": [
+      {
+        "command": "pnpm prisma:validate",
+        "purpose": "Validate Prisma schema syntax with a safe, non-production environment value.",
+        "required": true
+      },
+      {
+        "command": "pnpm typecheck",
+        "purpose": "Verify affected TypeScript contracts when source types change.",
+        "required": true
+      }
+    ],
+    "manualChecks": [
+      "Review ownership, backup, compatibility, and rollback evidence before any later migration request.",
+      "Confirm the phase contains no database command that mutates data or schema."
+    ],
+    "prohibitedCommands": [
+      "prisma migrate deploy",
+      "prisma migrate reset",
+      "prisma db push"
+    ]
+  },
+  "deliverables": [
+    {
+      "path": "docs/migration-reports/<phase>.md",
+      "kind": "report",
+      "description": "Captures database ownership, migration, compatibility, backup, and rollback review evidence."
+    }
+  ],
+  "risks": [
+    {
+      "severity": "critical",
+      "description": "A migration can alter or make data unavailable when ownership, compatibility, or recovery evidence is incomplete.",
+      "mitigation": "Stop at planning until a separately approved release authorizes a reviewed migration on an isolated target."
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-01",
+      "statement": "The phase creates a complete database change plan without changing any database."
+    },
+    {
+      "id": "AC-02",
+      "statement": "The required production ownership, backup, and migration approvals are identified as future gates."
+    }
+  ],
+  "execution": {
+    "branch": "docs/database-phase",
+    "workMode": "documentation",
+    "requiresHumanApproval": true,
+    "stopConditions": [
+      "Stop if a request requires database connection, migration execution, or production schema inspection.",
+      "Stop if ownership or backup evidence is unavailable."
+    ]
+  }
+}

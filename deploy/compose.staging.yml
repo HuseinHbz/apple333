@@ -1,0 +1,218 @@
+# Isolated non-production Compose scaffold for Apple333 staging.
+#
+# This file intentionally contains no migration service and does not create or
+# adopt a database schema. Run only the string-only verifier before a reviewed
+# staging bootstrap is available:
+#   node scripts/verify-staging-environment.mjs --template
+#
+# The Dockerfile name describes the hardened runtime image, not the deployment
+# environment. Environment isolation comes from the protected staging env file,
+# Compose project, labels, volumes, network, ports, and credentials below.
+name: ${COMPOSE_PROJECT_NAME}
+
+x-apple333-labels: &apple333-labels
+  com.apple333.project: ${APPLE333_PROJECT_ID}
+  com.apple333.managed: "true"
+  com.apple333.environment: ${APPLE333_ENVIRONMENT}
+  com.apple333.install-id: "${APPLE333_INSTALL_ID:?Set a unique staging-only install ID}"
+
+x-resource-defaults: &resource-defaults
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+
+x-json-logging: &json-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    <<: *resource-defaults
+    image: postgres:16.6-alpine3.20
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [private]
+    shm_size: 256mb
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 512
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: postgres
+
+  redis:
+    <<: *resource-defaults
+    image: redis:7.4.2-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    volumes:
+      - redis_data:/data
+    networks: [private]
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 256
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: redis
+
+  # MinIO is private infrastructure readiness only. It has no host port and no
+  # automatic bucket/user provisioning or application storage activation.
+  minio:
+    <<: *resource-defaults
+    image: ${APPLE333_MINIO_IMAGE:-minio/minio:RELEASE.2024-10-13T13-34-11Z}
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    expose: ["9000", "9001"]
+    networks: [private]
+    mem_limit: 768m
+    cpus: 0.75
+    pids_limit: 256
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: minio
+
+  app:
+    <<: *resource-defaults
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.production
+      target: runner
+      args:
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
+        NEXT_PUBLIC_SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-staging}
+        NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+    image: ${APPLE333_APP_IMAGE}
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      APP_NAME: ${APP_NAME}
+      APP_URL: ${APP_URL}
+      AUTH_URL: ${AUTH_URL}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-staging}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      METRICS_ENABLED: "true"
+      APPLE333_TRUST_PROXY_HEADERS: "true"
+      PORT: "3000"
+    expose: ["3000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks: [private, egress]
+    user: "1001:1001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: ["ALL"]
+    mem_limit: 1024m
+    cpus: 1.0
+    pids_limit: 256
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: app
+
+  nginx:
+    <<: *resource-defaults
+    image: nginx:1.27.4-alpine
+    ports:
+      - "${APPLE333_HTTP_BIND}:${APPLE333_HTTP_PORT}:80"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [private]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    logging: *json-logging
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: nginx
+
+networks:
+  private:
+    name: ${COMPOSE_PROJECT_NAME}_private
+    internal: true
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: network
+  egress:
+    name: ${COMPOSE_PROJECT_NAME}_egress
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: egress-network
+
+volumes:
+  postgres_data:
+    name: ${COMPOSE_PROJECT_NAME}_postgres_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: postgres-data
+  redis_data:
+    name: ${COMPOSE_PROJECT_NAME}_redis_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: redis-data
+  minio_data:
+    name: ${COMPOSE_PROJECT_NAME}_minio_data
+    labels:
+      <<: *apple333-labels
+      com.apple333.resource: minio-data

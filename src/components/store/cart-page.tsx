@@ -49,7 +49,7 @@ function CartContents({ cart }: { cart: StorefrontCartDto }) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="max-w-2xl">
-        <p className="text-xs font-bold tracking-[0.18em] text-zinc-500">SHOPPING BAG</p>
+        <p className="text-xs font-bold tracking-[0.18em] text-zinc-600">SHOPPING BAG</p>
         <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">سبد خرید</h1>
         <p className="mt-3 text-sm leading-7 text-zinc-600">موجودی و قیمت نهایی در مرحله بررسی سفارش دوباره اعتبارسنجی می‌شود.</p>
       </div>
@@ -63,7 +63,7 @@ function CartContents({ cart }: { cart: StorefrontCartDto }) {
               <Card key={item.variantId} className="overflow-hidden rounded-3xl shadow-none">
                 <CardContent className="flex gap-4 p-4 sm:p-5">
                   <div className="relative size-24 shrink-0 overflow-hidden rounded-2xl bg-zinc-100 sm:size-28">
-                    {item.heroMediaUrl ? <Image src={item.heroMediaUrl} alt={item.productName} fill sizes="112px" className="object-cover" unoptimized /> : <div className="grid h-full place-items-center p-2 text-center text-xs text-zinc-400">تصویر محصول</div>}
+                    {item.heroMediaUrl ? <Image src={item.heroMediaUrl} alt={item.productName} fill sizes="112px" className="object-cover" unoptimized /> : <div className="grid h-full place-items-center p-2 text-center text-xs text-zinc-600">تصویر محصول</div>}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-3">

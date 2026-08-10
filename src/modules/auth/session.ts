@@ -3,15 +3,15 @@ import 'server-only';
 import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
 
-import { authOptions } from '@/auth';
+import { authOptions, usesSecureSessionCookie } from '@/auth';
 import { AuthenticationError, AuthorizationError } from '@/server/errors/app-error';
 import { prisma } from '@/server/db/prisma';
 import { canAccessAdminRoute, isPermission, type Permission, type SessionActor } from '@/server/security/permissions';
 
 export const sessionCookie = {
-  name: process.env.NODE_ENV === 'production' ? '__Secure-apple333.session' : 'apple333.session',
+  name: usesSecureSessionCookie ? '__Secure-apple333.session' : 'apple333.session',
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: usesSecureSessionCookie,
   sameSite: 'lax' as const,
   path: '/'
 };

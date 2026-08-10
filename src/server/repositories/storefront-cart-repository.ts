@@ -13,7 +13,7 @@ const cartMediaSelect = {
 const cartInventorySelect = {
   onHand: true,
   reserved: true,
-  branch: { select: { id: true, name: true, city: true, isActive: true, isPickupEnabled: true } },
+  branch: { select: { id: true, name: true, city: true, isActive: true, status: true, isPickupEnabled: true } },
 } satisfies Prisma.BranchInventorySelect;
 
 export const storefrontCartSelect = {
@@ -23,6 +23,7 @@ export const storefrontCartSelect = {
     orderBy: { createdAt: 'asc' },
     select: {
       quantity: true,
+      unitPriceRials: true,
       variant: {
         select: {
           id: true,
@@ -77,7 +78,7 @@ export const storefrontCartRepository = {
   ) {
     return client.catalogVariant.findFirst({
       where: { id: variantId, isActive: true, product: { is: { status: 'PUBLISHED' } } },
-      select: { id: true, inventory: { select: cartInventorySelect } },
+      select: { id: true, priceRials: true, inventory: { select: cartInventorySelect } },
     });
   },
 
@@ -92,11 +93,17 @@ export const storefrontCartRepository = {
     });
   },
 
-  upsertItem(cartId: string, variantId: string, quantity: number, client: AdminDatabaseClient = prisma) {
+  upsertItem(
+    cartId: string,
+    variantId: string,
+    quantity: number,
+    unitPriceRials: bigint,
+    client: AdminDatabaseClient = prisma,
+  ) {
     return client.storefrontCartItem.upsert({
       where: { cartId_variantId: { cartId, variantId } },
-      create: { cartId, variantId, quantity },
-      update: { quantity },
+      create: { cartId, variantId, quantity, unitPriceRials },
+      update: { quantity, unitPriceRials },
     });
   },
 

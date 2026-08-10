@@ -1,4 +1,5 @@
 import { NotFoundError } from '@/server/errors/app-error';
+import { toInventoryAvailability } from '@/modules/inventory/availability';
 import type {
   PublicCategoryDto,
   PublicProductCardDto,
@@ -10,12 +11,22 @@ import type {
 import type { CatalogPageQuery } from '@/modules/catalog/validators';
 import { catalogRepository, type PublicProductRecord, type PublicVariantRecord } from '@/server/repositories/catalog-repository';
 
+export type PublicSitemapEntry = Readonly<{
+  slug: string;
+  lastModified: Date;
+  noIndex: boolean;
+}>;
+
 function price(value: bigint): string {
   return value.toString();
 }
 
+function isPublicBranch(entry: PublicVariantRecord['inventory'][number]): boolean {
+  return entry.branch.isActive && entry.branch.status === 'ACTIVE';
+}
+
 function availability(variant: PublicVariantRecord): ProductAvailability {
-  return variant.inventory.some((entry) => entry.branch.isActive && entry.onHand > entry.reserved) ? 'IN_STOCK' : 'OUT_OF_STOCK';
+  return variant.inventory.some((entry) => isPublicBranch(entry) && entry.onHand > entry.reserved) ? 'IN_STOCK' : 'OUT_OF_STOCK';
 }
 
 function publicMediaUrl(productId: string, mediaId: string): string {
@@ -111,8 +122,11 @@ function asVariant(variant: PublicVariantRecord): PublicProductVariantDto {
     compareAtPriceRials: variant.compareAtPriceRials ? price(variant.compareAtPriceRials) : null,
     availability: availability(variant),
     branches: variant.inventory
-      .filter((entry) => entry.branch.isActive && entry.branch.isPickupEnabled)
-      .map((entry) => ({ id: entry.branch.id, name: entry.branch.name, city: entry.branch.city, available: Math.max(entry.onHand - entry.reserved, 0) })),
+      .filter((entry) => isPublicBranch(entry) && entry.branch.isPickupEnabled)
+      .map((entry) => {
+        const available = Math.max(entry.onHand - entry.reserved, 0);
+        return { id: entry.branch.id, name: entry.branch.name, city: entry.branch.city, available, availability: toInventoryAvailability(available) };
+      }),
   };
 }
 
@@ -186,4 +200,14 @@ export async function comparePublicProducts(slugs: readonly string[]): Promise<r
     const product = mapped.get(slug);
     return product ? [product] : [];
   });
+}
+
+/** Compact public projection for sitemap generation; it never exposes PIM internals. */
+export async function listPublicSitemapEntries({ skip, take }: Readonly<{ skip: number; take: number }>): Promise<readonly PublicSitemapEntry[]> {
+  const records = await catalogRepository.findPublicSitemapEntries({ skip, take });
+  return records.map((record) => ({
+    slug: record.slug,
+    lastModified: record.updatedAt,
+    noIndex: record.seo?.noIndex ?? false,
+  }));
 }

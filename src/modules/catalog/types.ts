@@ -7,6 +7,7 @@ export type PublicCategoryDto = Readonly<{
 }>;
 
 export type ProductAvailability = 'IN_STOCK' | 'OUT_OF_STOCK';
+export type BranchAvailability = 'AVAILABLE' | 'LIMITED' | 'UNAVAILABLE';
 
 export type PublicProductCardDto = Readonly<{
   id: string;
@@ -34,7 +35,7 @@ export type PublicProductVariantDto = Readonly<{
   priceRials: string;
   compareAtPriceRials: string | null;
   availability: ProductAvailability;
-  branches: readonly Readonly<{ id: string; name: string; city: string | null; available: number }>[];
+  branches: readonly Readonly<{ id: string; name: string; city: string | null; available: number; availability: BranchAvailability }>[];
 }>;
 
 export type PublicProductSeoDto = Readonly<{

@@ -44,8 +44,37 @@ export const PERMISSIONS = [
   'product-imports.read',
   'product-imports.create',
   'product-imports.apply',
+  'branches.read',
+  'branches.create',
+  'branches.update',
+  'warehouses.read',
+  'warehouses.create',
+  'warehouses.update',
   'inventory.read',
+  'inventory.receive',
+  'inventory.adjust',
+  'inventory.transfer',
+  'inventory.reserve',
+  'inventory.release',
+  'inventory.policy.update',
+  'devices.read',
+  'devices.manage',
   'orders.read',
+  'orders.read_own',
+  'orders.create',
+  'orders.create_admin',
+  'orders.update',
+  'orders.confirm',
+  'orders.cancel',
+  'orders.cancel_after_payment',
+  'orders.allocate',
+  'orders.fulfill',
+  'orders.view_financials',
+  'orders.view_customer_pii',
+  'orders.view_imei',
+  'orders.add_internal_note',
+  'orders.export',
+  'orders.audit.read',
   'finance.read',
   'crm.read',
   'reports.read',
@@ -65,6 +94,22 @@ export type SessionActor = {
 };
 
 const permissionSet = new Set<string>(PERMISSIONS);
+
+/**
+ * These roles are explicitly allowed to operate across branches. A user that
+ * also carries a branch-scoped role remains global only when one of these
+ * roles is present; this preserves explicit full-platform administration.
+ */
+export const INVENTORY_GLOBAL_ROLE_CODES = ['SUPER_ADMIN', 'ADMIN', 'INVENTORY_MANAGER'] as const;
+
+/** Roles whose inventory authority is always bound to AdminUser.branchId. */
+export const INVENTORY_BRANCH_SCOPED_ROLE_CODES = ['BRANCH_MANAGER', 'WAREHOUSE_STAFF'] as const;
+
+/** Order operations are global only for explicitly governed operational roles. */
+export const ORDER_GLOBAL_ROLE_CODES = ['SUPER_ADMIN', 'ADMIN', 'ORDER_MANAGER', 'FINANCE_OPERATOR', 'FINANCE_STAFF', 'READ_ONLY_AUDITOR'] as const;
+
+/** Any of these roles without a branch assignment fails closed for OMS access. */
+export const ORDER_BRANCH_SCOPED_ROLE_CODES = ['BRANCH_MANAGER', 'BRANCH_OPERATOR', 'SALES_STAFF', 'WAREHOUSE_STAFF'] as const;
 
 export function isPermission(value: string): value is Permission {
   return permissionSet.has(value);
@@ -96,8 +141,59 @@ export function requireAllPermissions(actor: SessionActor, permissions: readonly
   }
 }
 
-export function requireBranchAccess(actor: SessionActor, branchId?: string | null): void {
-  if (actor.branchId && branchId && actor.branchId !== branchId) {
+/**
+ * Resolves the effective inventory branch scope once for every inventory
+ * service path. Pure branch-scoped actors must be provisioned with a branch;
+ * a missing AdminUser.branchId is an authorization failure, never global
+ * scope.
+ */
+export function resolveInventoryBranchScope(actor: SessionActor): string | undefined {
+  if (INVENTORY_GLOBAL_ROLE_CODES.some((roleCode) => actor.roleCodes.includes(roleCode))) {
+    return undefined;
+  }
+
+  if (INVENTORY_BRANCH_SCOPED_ROLE_CODES.some((roleCode) => actor.roleCodes.includes(roleCode))) {
+    if (!actor.branchId) {
+      throw new AuthorizationError();
+    }
+    return actor.branchId;
+  }
+
+  return actor.branchId ?? undefined;
+}
+
+/** Use for inventory configuration that has no meaningful branch target. */
+export function requireGlobalInventoryScope(actor: SessionActor): void {
+  if (resolveInventoryBranchScope(actor) !== undefined) {
     throw new AuthorizationError();
   }
+}
+
+export function requireBranchAccess(actor: SessionActor, branchId?: string | null): void {
+  const scopedBranchId = resolveInventoryBranchScope(actor);
+  if (scopedBranchId && branchId && scopedBranchId !== branchId) {
+    throw new AuthorizationError();
+  }
+}
+
+/**
+ * Order scope is deliberately independent from inventory scope. It protects
+ * order data, PII, and financial state even when an actor may inspect a
+ * related inventory record.
+ */
+export function resolveOrderBranchScope(actor: SessionActor): string | undefined {
+  if (ORDER_GLOBAL_ROLE_CODES.some((roleCode) => actor.roleCodes.includes(roleCode))) {
+    return undefined;
+  }
+  if (ORDER_BRANCH_SCOPED_ROLE_CODES.some((roleCode) => actor.roleCodes.includes(roleCode))) {
+    if (!actor.branchId) throw new AuthorizationError();
+    return actor.branchId;
+  }
+  if (actor.branchId) return actor.branchId;
+  throw new AuthorizationError();
+}
+
+export function requireOrderBranchAccess(actor: SessionActor, branchId: string): void {
+  const scope = resolveOrderBranchScope(actor);
+  if (scope !== undefined && scope !== branchId) throw new AuthorizationError();
 }

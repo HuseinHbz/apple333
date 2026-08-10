@@ -4,9 +4,9 @@ test('unauthenticated visitors are redirected away from the admin platform', asy
   await page.goto('/admin');
 
   await expect(page).toHaveURL(/\/account\/login/);
-  await expect(page.getByRole('heading', { name: 'ورود به مدیریت' })).toBeVisible();
-  await expect(page.getByLabel('ایمیل سازمانی')).toBeVisible();
-  await expect(page.getByLabel('گذرواژه')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Apple333/ })).toBeVisible();
+  await expect(page.locator('input[name="email"][type="email"]')).toBeVisible();
+  await expect(page.locator('input[name="password"][type="password"]')).toBeVisible();
 
   const response = await request.get('/api/admin/users');
   const body = await response.json() as { success: boolean; error: { code: string } };

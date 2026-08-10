@@ -1,0 +1,133 @@
+{
+  "schema": "https://apple333.ir/schemas/enterprise-phase-prompt.schema.json",
+  "schemaVersion": "1.0",
+  "phase": {
+    "id": "phase-05-application-template",
+    "number": "05",
+    "name": "Application delivery template",
+    "category": "application"
+  },
+  "title": "Apple333 application phase",
+  "objective": "Deliver one approved application capability with explicit scope, reusable boundaries, and verifiable quality gates.",
+  "scope": {
+    "inScope": [
+      "Implement only the approved module, route, component, or API contract.",
+      "Add focused automated tests and phase documentation."
+    ],
+    "outOfScope": [
+      "Unrelated UI redesigns.",
+      "Production deployment or operational changes.",
+      "Unreviewed data-model changes."
+    ],
+    "allowedPaths": [
+      "src/**",
+      "tests/**",
+      "docs/phases/**"
+    ],
+    "forbiddenPaths": [
+      "prisma/migrations/**",
+      "deploy/**",
+      ".env*"
+    ]
+  },
+  "constraints": {
+    "productionAccess": false,
+    "databaseChanges": "none",
+    "destructiveOperations": false,
+    "secretsPolicy": "never-read-or-print",
+    "commitPolicy": "user-approved"
+  },
+  "architecture": {
+    "decisions": [
+      {
+        "title": "Respect module boundaries",
+        "rationale": "Keep application work inside the owning module and shared primitives so the enterprise platform remains maintainable."
+      }
+    ],
+    "dependencies": []
+  },
+  "implementation": {
+    "steps": [
+      {
+        "id": "DEFINE_SCOPE",
+        "description": "Confirm the approved user outcome, API boundary, and files that may change.",
+        "expectedOutcome": "A bounded implementation plan with no implicit feature expansion."
+      },
+      {
+        "id": "IMPLEMENT",
+        "description": "Implement the approved behavior using existing platform conventions and strict TypeScript.",
+        "expectedOutcome": "The requested application capability is complete without unrelated refactors."
+      },
+      {
+        "id": "VERIFY",
+        "description": "Run required automated and manual checks, then record remaining limitations.",
+        "expectedOutcome": "Evidence supports release review."
+      }
+    ],
+    "nonGoals": [
+      "Do not alter production infrastructure.",
+      "Do not create or apply database migrations."
+    ]
+  },
+  "validation": {
+    "commands": [
+      {
+        "command": "pnpm typecheck",
+        "purpose": "Verify strict TypeScript compatibility.",
+        "required": true
+      },
+      {
+        "command": "pnpm lint",
+        "purpose": "Verify repository lint rules.",
+        "required": true
+      },
+      {
+        "command": "pnpm test",
+        "purpose": "Run unit coverage relevant to the application change.",
+        "required": true
+      }
+    ],
+    "manualChecks": [
+      "Review user-visible behavior against the approved acceptance criteria.",
+      "Confirm forbidden paths and secrets were not changed."
+    ],
+    "prohibitedCommands": [
+      "prisma migrate reset",
+      "prisma db push",
+      "git reset --hard"
+    ]
+  },
+  "deliverables": [
+    {
+      "path": "docs/phases/<phase>/implementation-report.md",
+      "kind": "report",
+      "description": "Records scope, validation evidence, and follow-up work."
+    }
+  ],
+  "risks": [
+    {
+      "severity": "medium",
+      "description": "An apparently small application change can alter an existing storefront or API contract.",
+      "mitigation": "Use narrow tests and explicitly document affected contracts before implementation."
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-01",
+      "statement": "The approved capability works and all required checks pass."
+    },
+    {
+      "id": "AC-02",
+      "statement": "No production access, database mutation, or unapproved path change occurs."
+    }
+  ],
+  "execution": {
+    "branch": "feature/application-phase",
+    "workMode": "implementation",
+    "requiresHumanApproval": true,
+    "stopConditions": [
+      "Stop when scope requires a database migration, production access, or a protected-path change not explicitly approved.",
+      "Stop when existing tests reveal an unrelated regression that cannot be safely isolated."
+    ]
+  }
+}

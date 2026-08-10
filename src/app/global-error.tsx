@@ -14,6 +14,9 @@ export default function GlobalError({ error }: GlobalErrorProps) {
 
   return (
     <html lang="fa" dir="rtl">
+      <head>
+        <title>خطای سیستم | Apple333</title>
+      </head>
       <body>
         <main role="alert">خطای سیستمی رخ داد. لطفاً بعداً تلاش کنید.</main>
       </body>

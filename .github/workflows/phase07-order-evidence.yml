@@ -1,0 +1,573 @@
+name: Phase 07 Order Management Evidence
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase07-order-evidence.yml
+      - package.json
+      - pnpm-lock.yaml
+      - prisma/**
+      - playwright.config.ts
+      - vitest.order-db.config.ts
+      - .env.order-test.example
+      - docker-compose.order-test.yml
+      - scripts/benchmark-orders.mjs
+      - scripts/cleanup-phase07-test-environment.mjs
+      - scripts/inspect-order-test-database.mjs
+      - scripts/order-e2e-fixtures.mjs
+      - scripts/reconcile-orders.mjs
+      - scripts/run-order-database-tests.mjs
+      - scripts/run-order-e2e-tests.mjs
+      - scripts/run-order-test-migrations.mjs
+      - scripts/seed-e2e-orders.mjs
+      - scripts/verify-order-test-environment.mjs
+      - scripts/write-order-evidence-metadata.mjs
+      - scripts/sanitize-e2e-log.mjs
+      - docs/phases/phase-07-order-management/**
+      - src/auth.ts
+      - src/**
+      - src/app/**
+      - src/components/orders/**
+      - src/components/store/**
+      - src/modules/auth/**
+      - src/modules/cart/**
+      - src/modules/orders/**
+      - src/server/**
+      - tests/**
+  push:
+    branches:
+      - feature/phase-07-order-management
+    paths:
+      - .github/workflows/phase07-order-evidence.yml
+      - package.json
+      - pnpm-lock.yaml
+      - prisma/**
+      - playwright.config.ts
+      - vitest.order-db.config.ts
+      - .env.order-test.example
+      - docker-compose.order-test.yml
+      - scripts/benchmark-orders.mjs
+      - scripts/cleanup-phase07-test-environment.mjs
+      - scripts/inspect-order-test-database.mjs
+      - scripts/order-e2e-fixtures.mjs
+      - scripts/reconcile-orders.mjs
+      - scripts/run-order-database-tests.mjs
+      - scripts/run-order-e2e-tests.mjs
+      - scripts/run-order-test-migrations.mjs
+      - scripts/seed-e2e-orders.mjs
+      - scripts/verify-order-test-environment.mjs
+      - scripts/write-order-evidence-metadata.mjs
+      - scripts/sanitize-e2e-log.mjs
+      - docs/phases/phase-07-order-management/**
+      - src/auth.ts
+      - src/**
+      - src/app/**
+      - src/components/orders/**
+      - src/components/store/**
+      - src/modules/auth/**
+      - src/modules/cart/**
+      - src/modules/orders/**
+      - src/server/**
+      - tests/**
+  schedule:
+    - cron: "41 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      benchmark_scale:
+        description: Optional expensive benchmark evidence run.
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - 10k
+          - 100k
+
+# No job writes repository state, deploys, or receives production credentials.
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-07-order-evidence-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  APP_NAME: Apple333
+  APP_URL: http://127.0.0.1:3000
+  AUTH_URL: http://127.0.0.1:3000
+  NEXTAUTH_URL: http://127.0.0.1:3000
+  AUTH_SECRET: phase07-ci-test-only-secret-not-valid-outside-ci-2026
+  NEXTAUTH_SECRET: phase07-ci-test-only-secret-not-valid-outside-ci-2026
+  NODE_ENV: test
+  APPLE333_TEST_DB: "1"
+  APPLE333_ORDER_TEST_DB: "1"
+  APPLE333_ORDER_E2E_TEST_DB: "1"
+  ORDER_TEST_DATABASE_URL: postgresql://apple333_phase07_order_test:ci-order-test-only@127.0.0.1:55434/apple333_phase07_order_test?schema=public
+  DATABASE_URL: postgresql://apple333_phase07_order_test:ci-order-test-only@127.0.0.1:55434/apple333_phase07_order_test?schema=public
+
+jobs:
+  quality:
+    name: Quality Gate
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate static quality gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm exec prettier --check .github/workflows/phase07-order-evidence.yml scripts/benchmark-orders.mjs scripts/cleanup-phase07-test-environment.mjs scripts/inspect-order-test-database.mjs scripts/order-e2e-fixtures.mjs scripts/reconcile-orders.mjs scripts/run-order-database-tests.mjs scripts/run-order-e2e-tests.mjs scripts/run-order-test-migrations.mjs scripts/sanitize-e2e-log.mjs scripts/seed-e2e-orders.mjs scripts/verify-order-test-environment.mjs scripts/write-order-evidence-metadata.mjs 2>&1 | tee evidence/phase07-format.log
+          pnpm typecheck 2>&1 | tee evidence/typecheck.log
+          pnpm typecheck:phase-07-tests 2>&1 | tee evidence/phase07-typecheck.log
+          pnpm lint 2>&1 | tee evidence/lint.log
+          pnpm test 2>&1 | tee evidence/unit-tests.log
+          pnpm test:integration 2>&1 | tee evidence/integration-tests.log
+          NODE_ENV=production pnpm build 2>&1 | tee evidence/production-build.log
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-07-quality-${{ github.run_id }}
+          path: |
+            evidence/
+            .next/diagnostics/
+            .next/trace
+          if-no-files-found: ignore
+          retention-days: 30
+
+  order-database:
+    name: Order Database Activation and Concurrency Tests
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase07_order_test
+          POSTGRES_USER: apple333_phase07_order_test
+          POSTGRES_PASSWORD: ci-order-test-only
+        ports:
+          - 55434:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase07_order_test -d apple333_phase07_order_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate and migrate the owned PostgreSQL target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm order:test:preflight 2>&1 | tee evidence/order-preflight.log
+          pnpm order:evidence:metadata evidence/environment.json
+          pnpm order:test:migrate 2>&1 | tee evidence/order-migrate.log
+      - name: Run real OMS database and concurrency tests
+        id: order_database_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Preserve this disposable job's tested rows until reconciliation so
+          # the retained report proves real OMS state rather than an empty DB.
+          APPLE333_ORDER_PRESERVE_EVIDENCE=1 pnpm test:order-db 2>&1 | tee evidence/order-database-and-concurrency.log
+      - name: Reconcile retained OMS database evidence
+        id: order_database_reconciliation
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm order:reconcile --json 2>&1 | tee evidence/order-reconciliation.json
+      - name: Enforce OMS database evidence results
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ steps.order_database_tests.outcome }}" != "success" ]]; then
+            echo "OMS database and concurrency tests did not pass."
+            exit 1
+          fi
+          if [[ "${{ steps.order_database_reconciliation.outcome }}" != "success" ]]; then
+            echo "OMS database reconciliation did not pass."
+            exit 1
+          fi
+      - name: Collect disposable PostgreSQL diagnostics
+        if: always()
+        shell: bash
+        run: docker logs '${{ job.services.postgres.id }}' > evidence/postgres.log 2>&1 || true
+      - name: Upload database activation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-07-order-database-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  order-e2e:
+    name: Order E2E Tests against Production Artifact
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase07_order_test
+          POSTGRES_USER: apple333_phase07_order_test
+          POSTGRES_PASSWORD: ci-order-test-only
+        ports:
+          - 55434:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase07_order_test -d apple333_phase07_order_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Activate and seed the owned E2E target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm order:test:preflight 2>&1 | tee evidence/order-preflight.log
+          pnpm order:evidence:metadata evidence/environment.json
+          pnpm order:test:migrate 2>&1 | tee evidence/order-migrate.log
+          pnpm order:test:seed 2>&1 | tee evidence/order-seed.log
+      - name: Build the production standalone artifact
+        shell: bash
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          pnpm build 2>&1 | tee evidence/production-build.log
+          pnpm prepare:standalone 2>&1 | tee evidence/standalone-runtime.log
+          test -f .next/standalone/server.js
+          test -d .next/standalone/.next/static
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run isolated OMS browser suite with sanitized diagnostics
+        id: order_e2e_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          pnpm test:e2e:orders 2>&1 | node scripts/sanitize-e2e-log.mjs | tee evidence/order-e2e.log
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          if [[ "${statuses[0]}" -ne 0 ]]; then exit "${statuses[0]}"; fi
+          if [[ "${statuses[1]}" -ne 0 ]]; then exit "${statuses[1]}"; fi
+          exit "${statuses[2]}"
+      - name: Reconcile OMS records after E2E execution
+        id: order_e2e_reconciliation
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: pnpm order:reconcile --json | tee evidence/order-reconciliation.json
+      - name: Enforce OMS E2E evidence results
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ steps.order_e2e_tests.outcome }}" != "success" ]]; then
+            echo "OMS E2E suite did not pass."
+            exit 1
+          fi
+          if [[ "${{ steps.order_e2e_reconciliation.outcome }}" != "success" ]]; then
+            echo "OMS E2E reconciliation did not pass."
+            exit 1
+          fi
+      - name: Collect disposable PostgreSQL diagnostics
+        if: always()
+        shell: bash
+        run: docker logs '${{ job.services.postgres.id }}' > evidence/postgres.log 2>&1 || true
+      - name: Upload E2E and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-07-order-e2e-${{ github.run_id }}
+          path: |
+            evidence/
+            playwright-report/
+            test-results/
+            logs/e2e/
+          if-no-files-found: warn
+          retention-days: 30
+
+  security:
+    name: Security Audit
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fail on critical or high production dependency findings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          set +e
+          pnpm audit --prod --json > evidence/production-dependency-audit.json
+          audit_exit=$?
+          set -e
+          PNPM_AUDIT_EXIT_CODE="$audit_exit" node scripts/verify-production-dependency-audit.mjs evidence/production-dependency-audit.json \
+            2>&1 | tee evidence/production-dependency-audit.log
+      - name: Upload security evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-07-order-security-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  benchmark-10k:
+    name: Order 10k Benchmark
+    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.benchmark_scale == '10k')
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase07_order_test
+          POSTGRES_USER: apple333_phase07_order_test
+          POSTGRES_PASSWORD: ci-order-test-only
+        ports:
+          - 55434:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase07_order_test -d apple333_phase07_order_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare benchmark database and deterministic references
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm order:evidence:metadata evidence/environment.json
+          pnpm order:test:migrate 2>&1 | tee evidence/order-migrate.log
+          pnpm order:test:seed 2>&1 | tee evidence/order-seed.log
+      - name: Run guarded 10k PostgreSQL benchmark
+        id: benchmark_10k
+        continue-on-error: true
+        shell: bash
+        env:
+          ORDER_BENCHMARK_ALLOW_SEED: "1"
+          ORDER_BENCHMARK_RUN_ID: ci-10k-${{ github.run_id }}-${{ github.run_attempt }}
+        run: pnpm order:benchmark --execute --scale 10000 2>&1 | tee evidence/order-benchmark-10k.json
+      - name: Reconcile 10k benchmark records
+        id: benchmark_10k_reconciliation
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: pnpm order:reconcile --json | tee evidence/order-benchmark-10k-reconciliation.json
+      - name: Enforce 10k benchmark evidence results
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ steps.benchmark_10k.outcome }}" != "success" ]]; then
+            echo "OMS 10k benchmark did not pass."
+            exit 1
+          fi
+          if [[ "${{ steps.benchmark_10k_reconciliation.outcome }}" != "success" ]]; then
+            echo "OMS 10k benchmark reconciliation did not pass."
+            exit 1
+          fi
+      - name: Upload 10k benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-07-order-benchmark-10k-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  benchmark-100k:
+    name: Order 100k Benchmark
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scale == '100k')
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase07_order_test
+          POSTGRES_USER: apple333_phase07_order_test
+          POSTGRES_PASSWORD: ci-order-test-only
+        ports:
+          - 55434:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase07_order_test -d apple333_phase07_order_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prepare benchmark database and deterministic references
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm order:evidence:metadata evidence/environment.json
+          pnpm order:test:migrate 2>&1 | tee evidence/order-migrate.log
+          pnpm order:test:seed 2>&1 | tee evidence/order-seed.log
+      - name: Run guarded 100k PostgreSQL benchmark
+        id: benchmark_100k
+        continue-on-error: true
+        shell: bash
+        env:
+          ORDER_BENCHMARK_ALLOW_SEED: "1"
+          ORDER_BENCHMARK_RUN_ID: ci-100k-${{ github.run_id }}-${{ github.run_attempt }}
+        run: pnpm order:benchmark --execute --scale 100000 2>&1 | tee evidence/order-benchmark-100k.json
+      - name: Reconcile 100k benchmark records
+        id: benchmark_100k_reconciliation
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: pnpm order:reconcile --json | tee evidence/order-benchmark-100k-reconciliation.json
+      - name: Enforce 100k benchmark evidence results
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ steps.benchmark_100k.outcome }}" != "success" ]]; then
+            echo "OMS 100k benchmark did not pass."
+            exit 1
+          fi
+          if [[ "${{ steps.benchmark_100k_reconciliation.outcome }}" != "success" ]]; then
+            echo "OMS 100k benchmark reconciliation did not pass."
+            exit 1
+          fi
+      - name: Upload 100k benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-07-order-benchmark-100k-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  cleanup:
+    name: Cleanup
+    if: always()
+    needs:
+      [
+        quality,
+        order-database,
+        order-e2e,
+        security,
+        benchmark-10k,
+        benchmark-100k,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm disposable runner cleanup boundary
+        run: |
+          echo 'Each PostgreSQL service is job-scoped and is removed by the GitHub-hosted runner.'
+          echo 'No production, shared, or named local Docker resource is targeted by this workflow.'

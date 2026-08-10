@@ -1,0 +1,91 @@
+name: apple333-phase06-test
+
+# Development/test-only PostgreSQL. Start it explicitly with:
+# docker compose --env-file .env.inventory-test -f docker-compose.inventory-test.yml up -d
+#
+# This is deliberately isolated from every development, staging, and production
+# Compose project. It is not included by the production deployment files.
+services:
+  apple333-phase06-redis:
+    container_name: apple333-phase06-redis
+    image: redis:7.4-alpine
+    restart: "no"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    networks:
+      - phase06_test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: inventory-test
+      com.apple333.purpose: phase-06.1-isolated-runtime-cache
+      com.apple333.owner: phase-06.1
+      com.apple333.resource: apple333-phase06-redis
+      com.apple333.disposable: "true"
+
+  apple333-phase06-postgres:
+    container_name: apple333-phase06-postgres
+    image: postgres:16.6-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: apple333_phase06_test
+      POSTGRES_USER: apple333_phase06_test
+      POSTGRES_PASSWORD: ${INVENTORY_TEST_POSTGRES_PASSWORD:?INVENTORY_TEST_POSTGRES_PASSWORD is required}
+      APPLE333_TEST_DB: ${APPLE333_TEST_DB:?APPLE333_TEST_DB is required}
+      POSTGRES_INITDB_ARGS: --auth=scram-sha-256
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - apple333_phase06_test_postgres_data:/var/lib/postgresql/data
+    networks:
+      - phase06_test
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: inventory-test
+      com.apple333.purpose: phase-06.1-isolated-inventory-database
+      com.apple333.owner: phase-06.1
+      com.apple333.resource: apple333-phase06-postgres
+      com.apple333.disposable: "true"
+
+networks:
+  phase06_test:
+    # Docker Desktop cannot forward a loopback-published port from an
+    # `internal` network, because it uses isolated gateway mode. A dedicated
+    # bridge still isolates this Compose project; the database remains exposed
+    # only through the fixed 127.0.0.1 binding above.
+    driver: bridge
+    name: apple333_phase06_test_network
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: inventory-test
+      com.apple333.owner: phase-06.1
+      com.apple333.disposable: "true"
+
+volumes:
+  apple333_phase06_test_postgres_data:
+    name: apple333_phase06_test_postgres_data
+    labels:
+      com.apple333.project: apple333
+      com.apple333.environment: inventory-test
+      com.apple333.purpose: phase-06.1-isolated-inventory-database
+      com.apple333.owner: phase-06.1
+      com.apple333.resource: apple333-phase06-postgres-data
+      com.apple333.disposable: "true"

@@ -1,0 +1,725 @@
+name: Phase 06.1.1 inventory production-approval evidence
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/phase06-inventory-evidence.yml
+      - package.json
+      - pnpm-lock.yaml
+      - prisma/**
+      - playwright.config.ts
+      - vitest.inventory-db.config.ts
+      - .env.inventory-test.example
+      - docker-compose.inventory-test.yml
+      - scripts/benchmark-inventory.mjs
+      - scripts/backfill-benchmark-branch-inventory.mjs
+      - scripts/cleanup-phase06-test-environment.mjs
+      - scripts/inventory-e2e-fixtures.mjs
+      - scripts/inspect-inventory-test-database.mjs
+      - scripts/reconcile-branch-inventory.mjs
+      - scripts/run-inventory-database-tests.mjs
+      - scripts/run-inventory-e2e-tests.mjs
+      - scripts/run-inventory-test-migrations.mjs
+      - scripts/sanitize-e2e-log.mjs
+      - scripts/seed-e2e-inventory.mjs
+      - scripts/verify-inventory-test-environment.mjs
+      - scripts/verify-production-dependency-audit.mjs
+      - docs/phase-06.1/**
+      - docs/phase-06.1.1/**
+      - src/auth.ts
+      - src/app/**
+      - src/components/inventory/**
+      - src/modules/auth/**
+      - src/modules/inventory/**
+      - src/server/**
+      - tests/database/**
+      - tests/e2e/**
+      - tests/integration/**
+      - tests/unit/**
+  push:
+    branches:
+      - feature/phase-06-inventory-multi-branch
+      - feature/phase-06.1-inventory-runtime-evidence
+      - feature/phase-06.1.1-inventory-production-approval-closure
+    paths:
+      - .github/workflows/phase06-inventory-evidence.yml
+      - package.json
+      - pnpm-lock.yaml
+      - prisma/**
+      - playwright.config.ts
+      - vitest.inventory-db.config.ts
+      - .env.inventory-test.example
+      - docker-compose.inventory-test.yml
+      - scripts/benchmark-inventory.mjs
+      - scripts/backfill-benchmark-branch-inventory.mjs
+      - scripts/cleanup-phase06-test-environment.mjs
+      - scripts/inventory-e2e-fixtures.mjs
+      - scripts/inspect-inventory-test-database.mjs
+      - scripts/reconcile-branch-inventory.mjs
+      - scripts/run-inventory-database-tests.mjs
+      - scripts/run-inventory-e2e-tests.mjs
+      - scripts/run-inventory-test-migrations.mjs
+      - scripts/sanitize-e2e-log.mjs
+      - scripts/seed-e2e-inventory.mjs
+      - scripts/verify-inventory-test-environment.mjs
+      - scripts/verify-production-dependency-audit.mjs
+      - docs/phase-06.1/**
+      - docs/phase-06.1.1/**
+      - src/auth.ts
+      - src/app/**
+      - src/components/inventory/**
+      - src/modules/auth/**
+      - src/modules/inventory/**
+      - src/server/**
+      - tests/database/**
+      - tests/e2e/**
+      - tests/integration/**
+      - tests/unit/**
+  # The scheduled run exists solely for the expensive 100k benchmark. GitHub
+  # runs schedules from the default branch, after this workflow is merged.
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      benchmark_scale:
+        description: "Optional benchmark scale. 100k is reserved for manual or scheduled evidence runs."
+        required: true
+        default: "10k"
+        type: choice
+        options:
+          - none
+          - 10k
+          - 100k
+
+# Evidence jobs never publish packages, deploy, alter repository state, or use
+# production credentials. Every database target below is a disposable service
+# with test-only credentials and the inventory scripts reject any other target.
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-06-inventory-evidence-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  APP_NAME: Apple333
+  APP_URL: http://127.0.0.1:3000
+  AUTH_URL: http://127.0.0.1:3000
+  NEXTAUTH_URL: http://127.0.0.1:3000
+  # Test-only value, intentionally not sourced from GitHub Secrets.
+  AUTH_SECRET: phase06-ci-test-only-secret-not-valid-outside-ci-2026
+  NEXTAUTH_SECRET: phase06-ci-test-only-secret-not-valid-outside-ci-2026
+  NODE_ENV: test
+  # Extra explicit marker for this workflow. The project-owned preflight also
+  # validates the exact disposable identity and loopback URL below.
+  APPLE333_TEST_DB: "1"
+  APPLE333_E2E_TEST_DB: "1"
+  INVENTORY_TEST_DATABASE_URL: postgresql://apple333_phase06_test:ci-inventory-test-only@127.0.0.1:55433/apple333_phase06_test?schema=public
+  DATABASE_URL: postgresql://apple333_phase06_test:ci-inventory-test-only@127.0.0.1:55433/apple333_phase06_test?schema=public
+  # The E2E harness validates both variables against this dedicated loopback
+  # port before it can connect to the disposable Redis service.
+  INVENTORY_TEST_REDIS_URL: redis://127.0.0.1:56379
+  REDIS_URL: redis://127.0.0.1:56379
+
+jobs:
+  quality:
+    name: Quality and Prisma static gates
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and generate Prisma client
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+
+      - name: Type-check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm typecheck 2>&1 | tee evidence/typecheck.log
+
+      - name: Lint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm lint 2>&1 | tee evidence/lint.log
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm test 2>&1 | tee evidence/unit-tests.log
+
+      - name: Run integration tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm test:integration 2>&1 | tee evidence/integration-tests.log
+
+      - name: Build production artifact
+        shell: bash
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          pnpm build 2>&1 | tee evidence/production-build.log
+
+      - name: Preserve static quality evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-06-quality-${{ github.run_id }}
+          path: |
+            evidence/
+            .next/diagnostics/
+            .next/trace
+          if-no-files-found: ignore
+          retention-days: 14
+
+  inventory-database:
+    name: Guarded PostgreSQL migration and inventory persistence
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          # Disposable CI-only identity required by the Phase 06 preflight.
+          POSTGRES_DB: apple333_phase06_test
+          POSTGRES_USER: apple333_phase06_test
+          POSTGRES_PASSWORD: ci-inventory-test-only
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase06_test -d apple333_phase06_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and generate Prisma client
+        run: |
+          pnpm prisma:validate
+          pnpm prisma:generate
+
+      - name: Verify isolated database identity before any migration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm inventory:test:preflight 2>&1 | tee evidence/inventory-preflight.log
+
+      # This project-owned command checks that the public schema is pristine,
+      # calls `prisma migrate deploy`, and verifies the expected migration.
+      # It does not call `db push`, `migrate reset`, or any production target.
+      - name: Apply reviewed migration through guarded migrate deploy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm inventory:test:migrate 2>&1 | tee evidence/inventory-migrate.log
+
+      - name: Run isolated PostgreSQL inventory persistence suite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm test:inventory-db 2>&1 | tee evidence/inventory-database-tests.log
+
+      - name: Collect disposable PostgreSQL diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          docker logs '${{ job.services.postgres.id }}' > evidence/postgres.log 2>&1 || true
+
+      - name: Upload migration and persistence evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-06-inventory-database-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  inventory-e2e:
+    name: Production-mode inventory E2E evidence
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase06_test
+          POSTGRES_USER: apple333_phase06_test
+          POSTGRES_PASSWORD: ci-inventory-test-only
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase06_test -d apple333_phase06_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      # The Playwright config selects the standalone production server on
+      # Linux CI; no development server is used for this evidence job.
+      APPLE333_E2E_SERVER_MODE: standalone
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate and generate Prisma client
+        run: |
+          pnpm prisma:validate
+          pnpm prisma:generate
+
+      - name: Verify and migrate isolated database
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm inventory:test:preflight 2>&1 | tee evidence/inventory-preflight.log
+          pnpm inventory:test:migrate 2>&1 | tee evidence/inventory-migrate.log
+
+      - name: Seed deterministic inventory browser fixtures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm inventory:e2e:seed 2>&1 | tee evidence/inventory-e2e-seed.log
+
+      - name: Build and verify standalone production artifact
+        shell: bash
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          pnpm build 2>&1 | tee evidence/production-build.log
+          pnpm prepare:standalone 2>&1 | tee evidence/standalone-runtime.log
+          test -f .next/standalone/server.js
+          test -d .next/standalone/.next/static
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Phase 06 inventory E2E suite against standalone artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          set +e
+          pnpm test:e2e:inventory 2>&1 | node scripts/sanitize-e2e-log.mjs | tee evidence/inventory-e2e.log
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          if [[ "${statuses[0]}" -ne 0 ]]; then
+            exit "${statuses[0]}"
+          fi
+          if [[ "${statuses[1]}" -ne 0 ]]; then
+            exit "${statuses[1]}"
+          fi
+          exit "${statuses[2]}"
+
+      # Database persistence tests intentionally exercise drift fixtures, so
+      # this assertion belongs only after the fresh deterministic E2E seed and
+      # a successful production-mode browser run.
+      - name: Reconcile sellable BranchInventory projection after clean E2E run
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          node scripts/reconcile-branch-inventory.mjs --fail-on-drift --json \
+            | tee evidence/inventory-reconciliation.json
+
+      - name: Collect disposable service diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          docker logs '${{ job.services.postgres.id }}' > evidence/postgres.log 2>&1 || true
+          docker logs '${{ job.services.redis.id }}' > evidence/redis.log 2>&1 || true
+
+      - name: Upload Playwright and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-06-inventory-e2e-${{ github.run_id }}
+          path: |
+            evidence/
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 30
+
+  security:
+    name: Production dependency audit gate
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fail on critical or high production dependency findings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          set +e
+          pnpm audit --prod --json > evidence/production-dependency-audit.json
+          audit_exit=$?
+          set -e
+          PNPM_AUDIT_EXIT_CODE="$audit_exit" node scripts/verify-production-dependency-audit.mjs evidence/production-dependency-audit.json \
+            2>&1 | tee evidence/production-dependency-audit.log
+
+      - name: Upload dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-06-production-dependency-audit-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  benchmark-10k:
+    name: Isolated 10k inventory benchmark
+    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.benchmark_scale == '10k')
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase06_test
+          POSTGRES_USER: apple333_phase06_test
+          POSTGRES_PASSWORD: ci-inventory-test-only
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase06_test -d apple333_phase06_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate, generate, and migrate isolated benchmark database
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm inventory:test:preflight 2>&1 | tee evidence/inventory-preflight.log
+          pnpm inventory:test:migrate 2>&1 | tee evidence/inventory-migrate.log
+
+      - name: Build standalone production runtime
+        shell: bash
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          pnpm build 2>&1 | tee evidence/production-build.log
+          pnpm prepare:standalone 2>&1 | tee evidence/standalone-runtime.log
+
+      - name: Start local standalone application for benchmark requests
+        shell: bash
+        env:
+          NODE_ENV: production
+          HOSTNAME: 127.0.0.1
+          PORT: "3000"
+        run: |
+          set -Eeuo pipefail
+          node .next/standalone/server.js > evidence/application.log 2>&1 &
+          echo $! > evidence/application.pid
+          for attempt in {1..45}; do
+            if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3000/api/ready > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat evidence/application.log
+          exit 1
+
+      - name: Run guarded 10k benchmark
+        shell: bash
+        env:
+          INVENTORY_BENCHMARK_ALLOW_SEED: "1"
+          INVENTORY_BENCHMARK_RUN_ID: ci-10k-${{ github.run_id }}-${{ github.run_attempt }}
+          INVENTORY_BENCHMARK_API_BASE_URL: http://127.0.0.1:3000
+        run: |
+          set -Eeuo pipefail
+          node scripts/benchmark-inventory.mjs --execute --scale 10000 2>&1 | tee evidence/inventory-benchmark-10k.log
+
+      # The benchmark fixture creates sellable physical balances. Verify that
+      # its transactional BranchInventory projection remains coherent rather
+      # than treating benchmark data as an exception to the stock contract.
+      - name: Reconcile sellable projection after 10k benchmark
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/reconcile-branch-inventory.mjs --fail-on-drift --json \
+            | tee evidence/inventory-benchmark-10k-reconciliation.json
+
+      - name: Stop benchmark application
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f evidence/application.pid ]]; then
+            kill "$(cat evidence/application.pid)" || true
+          fi
+
+      - name: Collect disposable service diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          docker logs '${{ job.services.postgres.id }}' > evidence/postgres.log 2>&1 || true
+          docker logs '${{ job.services.redis.id }}' > evidence/redis.log 2>&1 || true
+
+      - name: Upload 10k benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-06-inventory-benchmark-10k-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  benchmark-100k:
+    name: Isolated 100k inventory benchmark (manual or scheduled)
+    # Keep the expensive 100k load out of pull requests and ordinary pushes.
+    # It runs only from the nightly schedule or an explicit manual selection.
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scale == '100k')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16.6-alpine
+        env:
+          POSTGRES_DB: apple333_phase06_test
+          POSTGRES_USER: apple333_phase06_test
+          POSTGRES_PASSWORD: ci-inventory-test-only
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U apple333_phase06_test -d apple333_phase06_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.26.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate, generate, and migrate isolated benchmark database
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p evidence
+          pnpm prisma:validate 2>&1 | tee evidence/prisma-validate.log
+          pnpm prisma:generate 2>&1 | tee evidence/prisma-generate.log
+          pnpm inventory:test:preflight 2>&1 | tee evidence/inventory-preflight.log
+          pnpm inventory:test:migrate 2>&1 | tee evidence/inventory-migrate.log
+
+      - name: Build standalone production runtime
+        shell: bash
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          pnpm build 2>&1 | tee evidence/production-build.log
+          pnpm prepare:standalone 2>&1 | tee evidence/standalone-runtime.log
+
+      - name: Start local standalone application for benchmark requests
+        shell: bash
+        env:
+          NODE_ENV: production
+          HOSTNAME: 127.0.0.1
+          PORT: "3000"
+        run: |
+          set -Eeuo pipefail
+          node .next/standalone/server.js > evidence/application.log 2>&1 &
+          echo $! > evidence/application.pid
+          for attempt in {1..45}; do
+            if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3000/api/ready > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat evidence/application.log
+          exit 1
+
+      - name: Run guarded 100k benchmark
+        shell: bash
+        env:
+          INVENTORY_BENCHMARK_ALLOW_SEED: "1"
+          INVENTORY_BENCHMARK_RUN_ID: ci-100k-${{ github.run_id }}-${{ github.run_attempt }}
+          INVENTORY_BENCHMARK_API_BASE_URL: http://127.0.0.1:3000
+        run: |
+          set -Eeuo pipefail
+          node scripts/benchmark-inventory.mjs --execute --scale 100000 2>&1 | tee evidence/inventory-benchmark-100k.log
+
+      - name: Reconcile sellable projection after 100k benchmark
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node scripts/reconcile-branch-inventory.mjs --fail-on-drift --json \
+            | tee evidence/inventory-benchmark-100k-reconciliation.json
+
+      - name: Stop benchmark application
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f evidence/application.pid ]]; then
+            kill "$(cat evidence/application.pid)" || true
+          fi
+
+      - name: Collect disposable service diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          docker logs '${{ job.services.postgres.id }}' > evidence/postgres.log 2>&1 || true
+          docker logs '${{ job.services.redis.id }}' > evidence/redis.log 2>&1 || true
+
+      - name: Upload 100k benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase-06-inventory-benchmark-100k-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30

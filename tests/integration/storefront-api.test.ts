@@ -64,8 +64,10 @@ const emptyCart = {
   items: [],
 } satisfies StorefrontCartDto;
 
+const TEST_ORIGIN = new URL(process.env.APP_URL ?? 'http://localhost:3000').origin;
+
 function request(path: string, init?: RequestInit): Request {
-  return new Request(`http://localhost${path}`, init);
+  return new Request(new URL(path, TEST_ORIGIN), init);
 }
 
 describe('storefront public API routes', () => {
@@ -95,6 +97,17 @@ describe('storefront public API routes', () => {
     expect(response.status).toBe(400);
     expect(body.error.code).toBe('VALIDATION_ERROR');
     expect(mocks.listPublicProducts).not.toHaveBeenCalled();
+  });
+
+  it('passes bounded brand and model filters through the public catalog contract', async () => {
+    const response = await productsGet(request('/api/store/products?brand=Apple&model=iPhone%2016&sort=newest'));
+
+    expect(response.status).toBe(200);
+    expect(mocks.listPublicProducts).toHaveBeenCalledWith(expect.objectContaining({
+      brand: 'Apple',
+      model: 'iPhone 16',
+      sort: 'newest',
+    }));
   });
 
   it('uses the validated route parameter for a product response', async () => {
@@ -129,7 +142,7 @@ describe('storefront public API routes', () => {
   it('requires same-origin cart mutations and sets an opaque guest-cart cookie', async () => {
     const response = await addCartItem(request('/api/store/cart/items', {
       method: 'POST',
-      headers: { origin: 'http://localhost' },
+      headers: { origin: TEST_ORIGIN },
       body: JSON.stringify({ variantId: 'ckz8x8x8x000001l4h3e5f6g7', quantity: 1 }),
     }));
 

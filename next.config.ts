@@ -3,6 +3,10 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // The bare-metal deployment script builds into a unique staging directory
+  // and atomically swaps it into .next only after the standalone artifact is
+  // complete. Normal local/CI builds continue to use .next.
+  distDir: process.env.APPLE333_NEXT_DIST_DIR ?? '.next',
   poweredByHeader: false,
   allowedDevOrigins: ['127.0.0.1'],
   async headers() {

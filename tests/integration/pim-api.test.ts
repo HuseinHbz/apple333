@@ -25,6 +25,7 @@ import { PATCH as updateProduct } from '@/app/api/admin/products/[id]/route';
 import { GET as listProducts, POST as createProduct } from '@/app/api/admin/products/route';
 
 const PRODUCT_ID = 'ckz8x8x8x000001l4h3e5f6g7';
+const TEST_ORIGIN = new URL(process.env.APP_URL ?? 'http://localhost:3000').origin;
 
 const catalogManager: SessionActor = {
   id: 'admin_1',
@@ -39,7 +40,7 @@ const publisher: SessionActor = {
 };
 
 function request(path: string, init?: RequestInit): Request {
-  return new Request(`http://localhost${path}`, init);
+  return new Request(new URL(path, TEST_ORIGIN), init);
 }
 
 describe('PIM administrative API routes', () => {
@@ -83,7 +84,7 @@ describe('PIM administrative API routes', () => {
   it('validates and forwards a draft creation with audit context', async () => {
     const response = await createProduct(request('/api/admin/products', {
       method: 'POST',
-      headers: { origin: 'http://localhost', 'content-type': 'application/json', 'x-request-id': 'pim_create_1234' },
+      headers: { origin: TEST_ORIGIN, 'content-type': 'application/json', 'x-request-id': 'pim_create_1234' },
       body: JSON.stringify({ slug: 'iphone-16-pro', name: 'iPhone 16 Pro', variants: [] }),
     }));
 
@@ -97,7 +98,7 @@ describe('PIM administrative API routes', () => {
   it('enforces product optimistic-lock input on updates', async () => {
     const response = await updateProduct(request(`/api/admin/products/${PRODUCT_ID}`, {
       method: 'PATCH',
-      headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+      headers: { origin: TEST_ORIGIN, 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'iPhone 16 Pro Max' }),
     }), { params: Promise.resolve({ id: PRODUCT_ID }) });
 
@@ -108,7 +109,7 @@ describe('PIM administrative API routes', () => {
   it('reserves publication for the explicit publish permission', async () => {
     const response = await publishProduct(request(`/api/admin/products/${PRODUCT_ID}/publish`, {
       method: 'POST',
-      headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+      headers: { origin: TEST_ORIGIN, 'content-type': 'application/json' },
       body: JSON.stringify({ version: 1 }),
     }), { params: Promise.resolve({ id: PRODUCT_ID }) });
 
@@ -118,7 +119,7 @@ describe('PIM administrative API routes', () => {
     mocks.requireAdminActor.mockResolvedValue(publisher);
     const authorized = await publishProduct(request(`/api/admin/products/${PRODUCT_ID}/publish`, {
       method: 'POST',
-      headers: { origin: 'http://localhost', 'content-type': 'application/json' },
+      headers: { origin: TEST_ORIGIN, 'content-type': 'application/json' },
       body: JSON.stringify({ version: 1 }),
     }), { params: Promise.resolve({ id: PRODUCT_ID }) });
 

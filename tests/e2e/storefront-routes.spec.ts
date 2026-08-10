@@ -8,7 +8,7 @@ test.describe('public storefront route shells', () => {
       const response = await page.goto(route);
 
       expect(response?.status(), `Expected ${route} to be a public storefront route.`).toBe(200);
-      await expect(page.locator('main')).toBeVisible();
+      await expect(page.locator('main:not([aria-busy])').last()).toBeVisible();
     });
   }
 });

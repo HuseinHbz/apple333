@@ -8,7 +8,21 @@ export const userRepository = {
       email: true,
       mobile: true,
       status: true,
-      profile: { select: { firstName: true, lastName: true } }
+      profile: { select: { firstName: true, lastName: true } },
+      addresses: {
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          label: true,
+          recipientName: true,
+          mobile: true,
+          province: true,
+          city: true,
+          line1: true,
+          postalCode: true,
+          isDefault: true,
+        },
+      },
     }
   }),
   list: (skip: number, take: number) => prisma.user.findMany({

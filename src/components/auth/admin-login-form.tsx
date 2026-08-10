@@ -28,7 +28,7 @@ export function AdminLoginForm({ callbackUrl }: AdminLoginFormProps) {
 
     setIsSubmitting(false);
     if (!result?.ok) {
-      setError('اطلاعات ورود معتبر نیست یا دسترسی مدیریت فعال نشده است.');
+      setError('اطلاعات ورود معتبر نیست یا حساب شما فعال نشده است.');
       return;
     }
 
@@ -39,7 +39,7 @@ export function AdminLoginForm({ callbackUrl }: AdminLoginFormProps) {
   return (
     <form className="space-y-5" onSubmit={onSubmit} noValidate>
       <label className="grid gap-2 text-sm font-medium text-zinc-800">
-        ایمیل سازمانی
+        ایمیل حساب کاربری
         <input
           autoComplete="email"
           className="h-11 rounded-xl border border-zinc-200 bg-white px-3 outline-none transition focus:border-zinc-950 focus:ring-4 focus:ring-zinc-100"
