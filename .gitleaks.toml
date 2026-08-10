@@ -1,0 +1,21 @@
+title = "Apple333 Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# These are deterministic, non-production Phase 08 test fixtures. Each
+# exception requires both the exact fixture value and its exact test path so a
+# similar value anywhere else in the repository remains a blocking finding.
+[[allowlists]]
+description = "Phase 08 disposable simulator secret fixture"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^phase08-disposable-secret-with-32-characters$''']
+paths = ['''^tests/unit/payment-test-environment\.test\.ts$''']
+
+[[allowlists]]
+description = "Phase 08 deterministic refund idempotency fixture"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^refund-test-key-0001$''']
+paths = ['''^tests/unit/payment-simulator\.test\.ts$''']
