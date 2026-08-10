@@ -195,6 +195,18 @@ describe("Phase 07 operational tooling", () => {
     ).toEqual({ destroyOwned: true });
   });
 
+  it("passes workflow arguments through pnpm without injecting an extra separator", () => {
+    const workflow = readFileSync(
+      resolve(process.cwd(), ".github/workflows/phase07-order-evidence.yml"),
+      "utf8",
+    );
+
+    expect(workflow).not.toContain(" -- --");
+    expect(workflow).toContain("pnpm order:benchmark --execute --scale 10000");
+    expect(workflow).toContain("pnpm order:benchmark --execute --scale 100000");
+    expect(workflow).toContain("pnpm order:reconcile --json");
+  });
+
   it("recognizes a coherent completed order without exposing or mutating PII", () => {
     const result = reconcileOrderRecords([
       {

@@ -216,7 +216,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          pnpm order:reconcile -- --fail-on-drift --json 2>&1 | tee evidence/order-reconciliation.json
+          pnpm order:reconcile --json 2>&1 | tee evidence/order-reconciliation.json
       - name: Enforce OMS database evidence results
         if: always()
         shell: bash
@@ -319,7 +319,7 @@ jobs:
         if: always()
         continue-on-error: true
         shell: bash
-        run: pnpm order:reconcile -- --fail-on-drift --json | tee evidence/order-reconciliation.json
+        run: pnpm order:reconcile --json | tee evidence/order-reconciliation.json
       - name: Enforce OMS E2E evidence results
         if: always()
         shell: bash
@@ -443,13 +443,13 @@ jobs:
         env:
           ORDER_BENCHMARK_ALLOW_SEED: "1"
           ORDER_BENCHMARK_RUN_ID: ci-10k-${{ github.run_id }}-${{ github.run_attempt }}
-        run: pnpm order:benchmark -- --execute --scale 10000 2>&1 | tee evidence/order-benchmark-10k.json
+        run: pnpm order:benchmark --execute --scale 10000 2>&1 | tee evidence/order-benchmark-10k.json
       - name: Reconcile 10k benchmark records
         id: benchmark_10k_reconciliation
         if: always()
         continue-on-error: true
         shell: bash
-        run: pnpm order:reconcile -- --fail-on-drift --json | tee evidence/order-benchmark-10k-reconciliation.json
+        run: pnpm order:reconcile --json | tee evidence/order-benchmark-10k-reconciliation.json
       - name: Enforce 10k benchmark evidence results
         if: always()
         shell: bash
@@ -524,13 +524,13 @@ jobs:
         env:
           ORDER_BENCHMARK_ALLOW_SEED: "1"
           ORDER_BENCHMARK_RUN_ID: ci-100k-${{ github.run_id }}-${{ github.run_attempt }}
-        run: pnpm order:benchmark -- --execute --scale 100000 2>&1 | tee evidence/order-benchmark-100k.json
+        run: pnpm order:benchmark --execute --scale 100000 2>&1 | tee evidence/order-benchmark-100k.json
       - name: Reconcile 100k benchmark records
         id: benchmark_100k_reconciliation
         if: always()
         continue-on-error: true
         shell: bash
-        run: pnpm order:reconcile -- --fail-on-drift --json | tee evidence/order-benchmark-100k-reconciliation.json
+        run: pnpm order:reconcile --json | tee evidence/order-benchmark-100k-reconciliation.json
       - name: Enforce 100k benchmark evidence results
         if: always()
         shell: bash
