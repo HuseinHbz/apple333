@@ -121,7 +121,7 @@ export async function addGuestCartItem(
     const requestedQuantity = (existing?.quantity ?? 0) + input.quantity;
     if (requestedQuantity > 10 || requestedQuantity > availableForVariant(variant.inventory)) throw new ConflictError();
 
-    await storefrontCartRepository.upsertItem(cart.id, input.variantId, requestedQuantity, transaction);
+    await storefrontCartRepository.upsertItem(cart.id, input.variantId, requestedQuantity, variant.priceRials, transaction);
     return storefrontCartRepository.touch(cart.id, transaction);
   });
 }
@@ -143,7 +143,7 @@ export async function updateGuestCartItem(
     const variant = await storefrontCartRepository.findVariantForCart(variantId, transaction);
     assertPurchasable(variant);
     if (input.quantity > availableForVariant(variant.inventory)) throw new ConflictError();
-    await storefrontCartRepository.upsertItem(cart.id, variantId, input.quantity, transaction);
+    await storefrontCartRepository.upsertItem(cart.id, variantId, input.quantity, variant.priceRials, transaction);
     return storefrontCartRepository.touch(cart.id, transaction);
   });
 }

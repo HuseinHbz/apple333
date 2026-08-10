@@ -34,6 +34,7 @@ const implementedRouteOverrides = new Set([
   '/admin/branches',
   '/admin/warehouses',
   '/admin/imei',
+  '/admin/orders',
 ]);
 
 export const adminNavigation: readonly AdminNavigationGroup[] = [

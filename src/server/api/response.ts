@@ -6,10 +6,18 @@ import { AppError, ValidationError } from '@/server/errors/app-error';
 export type ApiMeta = { requestId: string };
 
 const requestIdPattern = /^[A-Za-z0-9._-]{8,128}$/;
+const generatedRequestIds = new WeakMap<Request, string>();
 
 export function requestId(request: Request): string {
   const candidate = request.headers.get('x-request-id');
-  return candidate && requestIdPattern.test(candidate) ? candidate : crypto.randomUUID();
+  if (candidate && requestIdPattern.test(candidate)) return candidate;
+
+  const existing = generatedRequestIds.get(request);
+  if (existing) return existing;
+
+  const generated = crypto.randomUUID();
+  generatedRequestIds.set(request, generated);
+  return generated;
 }
 
 export function success<T>(data: T, meta: ApiMeta, status = 200): NextResponse {

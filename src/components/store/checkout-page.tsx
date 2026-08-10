@@ -4,6 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { MapPin, PackageCheck, ShieldCheck, Truck, WalletCards } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { StoreErrorState, StoreLoadingState } from '@/components/store/store-page-state';
 import { Alert } from '@/components/ui/alert';
@@ -18,6 +19,18 @@ import { StoreApiError, storeApi } from '@/lib/store-api';
 import { formatRials } from './store-utils';
 
 type Fulfillment = 'PICKUP' | 'DELIVERY';
+
+type CheckoutAddress = Readonly<{
+  id: string;
+  label: string | null;
+  recipientName: string;
+  province: string | null;
+  city: string | null;
+  line1: string;
+  isDefault: boolean;
+}>;
+
+type CheckoutProfile = Readonly<{ addresses: readonly CheckoutAddress[] }>;
 
 export function CheckoutPage() {
   const setCart = useStorefrontCart((state) => state.setCart);
@@ -35,10 +48,15 @@ export function CheckoutPage() {
 }
 
 function CheckoutContents({ cart }: { cart: StorefrontCartDto }) {
+  const router = useRouter();
   const branches = useMemo(() => pickupBranchesForCart(cart), [cart]);
   const [fulfillment, setFulfillment] = useState<Fulfillment>('DELIVERY');
   const [pickupBranchId, setPickupBranchId] = useState('');
+  const [shippingAddressId, setShippingAddressId] = useState('');
+  const [billingAddressId, setBillingAddressId] = useState('');
   const [wantsInsurance, setWantsInsurance] = useState(false);
+  const profile = useQuery({ queryKey: ['storefront-profile'], queryFn: () => storeApi<CheckoutProfile>('/api/users/me'), staleTime: 60_000 });
+  const addresses = profile.data?.addresses ?? [];
   const quote = useMutation({
     mutationFn: () => {
       const payload = fulfillment === 'PICKUP'
@@ -49,6 +67,24 @@ function CheckoutContents({ cart }: { cart: StorefrontCartDto }) {
   });
 
   const pickupUnavailable = fulfillment === 'PICKUP' && (!pickupBranchId || branches.length === 0);
+  const deliveryUnavailable = fulfillment === 'DELIVERY' && !shippingAddressId;
+  const createOrder = useMutation({
+    mutationFn: () => {
+      const idempotencyKey = crypto.randomUUID();
+      return storeApi<{ orderNumber: string }>('/api/store/orders', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({
+          fulfillmentMethod: fulfillment,
+          ...(fulfillment === 'PICKUP'
+            ? { pickupBranchId }
+            : { shippingAddressId, ...(billingAddressId ? { billingAddressId } : {}) }),
+          idempotencyKey,
+        }),
+      });
+    },
+    onSuccess: (order) => router.push(`/checkout/success/${encodeURIComponent(order.orderNumber)}`),
+  });
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -68,6 +104,7 @@ function CheckoutContents({ cart }: { cart: StorefrontCartDto }) {
                 <button type="button" onClick={() => setFulfillment('PICKUP')} className={`rounded-2xl border p-4 text-right transition focus:outline-none focus-visible:ring-4 focus-visible:ring-zinc-300 ${fulfillment === 'PICKUP' ? 'border-zinc-950 bg-zinc-950 text-white' : 'border-zinc-200 hover:border-zinc-400'}`}><MapPin className="size-5" aria-hidden="true" /><p className="mt-3 text-sm font-bold">تحویل حضوری از شعبه</p><p className={`mt-1 text-xs leading-5 ${fulfillment === 'PICKUP' ? 'text-zinc-300' : 'text-zinc-500'}`}>فقط شعب دارای موجودی قابل‌تحویل را انتخاب کنید.</p></button>
               </div>
               {fulfillment === 'PICKUP' ? <div className="mt-5"><label className="block"><span className="mb-2 block text-sm font-bold">شعبه تحویل</span><Select value={pickupBranchId} onChange={(event) => setPickupBranchId(event.target.value)} disabled={branches.length === 0}><option value="">یک شعبه را انتخاب کنید</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{branch.city ? ` — ${branch.city}` : ''}</option>)}</Select></label>{branches.length === 0 ? <p className="mt-2 text-xs leading-5 text-amber-700">در حال حاضر هیچ شعبه‌ای نمی‌تواند همهٔ اقلام این سبد را هم‌زمان تحویل دهد.</p> : null}</div> : null}
+              {fulfillment === 'DELIVERY' ? <div className="mt-5 space-y-4"><label className="block"><span className="mb-2 block text-sm font-bold">نشانی تحویل</span><Select value={shippingAddressId} onChange={(event) => { setShippingAddressId(event.target.value); if (!billingAddressId) setBillingAddressId(event.target.value); }} disabled={profile.isPending || addresses.length === 0}><option value="">{profile.isPending ? 'در حال دریافت نشانی‌ها…' : 'یک نشانی را انتخاب کنید'}</option>{addresses.map((address) => <option key={address.id} value={address.id}>{address.label ?? address.recipientName} — {[address.city, address.line1].filter(Boolean).join('، ')}</option>)}</Select></label><label className="block"><span className="mb-2 block text-sm font-bold">نشانی صورت‌حساب <span className="font-normal text-zinc-500">(اختیاری)</span></span><Select value={billingAddressId} onChange={(event) => setBillingAddressId(event.target.value)} disabled={profile.isPending || addresses.length === 0}><option value="">همان نشانی تحویل</option>{addresses.map((address) => <option key={address.id} value={address.id}>{address.label ?? address.recipientName}</option>)}</Select></label>{profile.isError ? <p className="text-xs leading-5 text-amber-700">برای ثبت سفارش باید وارد حساب خود شوید و یک نشانی معتبر داشته باشید.</p> : null}{!profile.isPending && !profile.isError && addresses.length === 0 ? <p className="text-xs leading-5 text-amber-700">برای ارسال، ابتدا یک نشانی در حساب کاربری خود ثبت کنید.</p> : null}</div> : null}
             </CardContent>
           </Card>
 
@@ -81,6 +118,7 @@ function CheckoutContents({ cart }: { cart: StorefrontCartDto }) {
 
           {quote.isError ? <Alert tone="danger" title="پیش‌نمایش خرید آماده نشد">{quote.error instanceof StoreApiError ? quote.error.message : 'لطفاً دوباره تلاش کنید.'}</Alert> : null}
           {quote.data ? <QuoteResult quote={quote.data} /> : null}
+          {createOrder.isError ? <Alert tone="danger" title="ثبت سفارش انجام نشد">{createOrder.error instanceof StoreApiError ? createOrder.error.message : 'لطفاً دوباره تلاش کنید.'}</Alert> : null}
         </section>
         <aside className="lg:sticky lg:top-20">
           <Card className="rounded-3xl shadow-none">
@@ -91,6 +129,8 @@ function CheckoutContents({ cart }: { cart: StorefrontCartDto }) {
               <div className="flex justify-between font-black"><span>جمع اقلام</span><span>{formatRials(cart.subtotalRials)}</span></div>
               <Button size="lg" className="mt-6 w-full" disabled={quote.isPending || pickupUnavailable} onClick={() => quote.mutate()}><PackageCheck className="size-4" aria-hidden="true" />{quote.isPending ? 'در حال بررسی…' : 'دریافت پیش‌نمایش خرید'}</Button>
               {pickupUnavailable ? <p className="mt-3 text-xs leading-5 text-amber-700">برای تحویل حضوری، یک شعبه دارای موجودی را انتخاب کنید.</p> : null}
+              <Button size="lg" className="mt-3 w-full" disabled={createOrder.isPending || pickupUnavailable || deliveryUnavailable} onClick={() => createOrder.mutate()}><PackageCheck className="size-4" aria-hidden="true" />{createOrder.isPending ? 'در حال ثبت سفارش…' : 'ثبت امن سفارش'}</Button>
+              {deliveryUnavailable ? <p className="mt-3 text-xs leading-5 text-amber-700">برای ارسال، یک نشانی معتبر از حساب کاربری خود انتخاب کنید.</p> : null}
             </CardContent>
           </Card>
         </aside>

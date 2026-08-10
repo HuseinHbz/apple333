@@ -69,7 +69,7 @@ export type InventoryMovementDto = Readonly<{
   id: string;
   skuId: string;
   skuCode: string;
-  type: 'PURCHASE' | 'TRANSFER' | 'ADJUSTMENT' | 'RETURN' | 'SALE_RESERVED';
+  type: 'PURCHASE' | 'TRANSFER' | 'ADJUSTMENT' | 'RETURN' | 'SALE_RESERVED' | 'SALE_FULFILLED';
   adjustmentDirection: 'INCREASE' | 'DECREASE' | null;
   quantity: number;
   fromLocationId: string | null;

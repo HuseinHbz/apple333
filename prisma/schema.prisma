@@ -154,6 +154,7 @@ enum StockMovementType {
   ADJUSTMENT
   RETURN
   SALE_RESERVED
+  SALE_FULFILLED
 }
 
 enum InventoryAdjustmentDirection {
@@ -190,6 +191,97 @@ enum StorefrontCartStatus {
   CONVERTED
 }
 
+enum OrderSource {
+  STOREFRONT
+  ADMIN
+  BRANCH_POS
+  CALL_CENTER
+  IMPORT
+  API
+}
+
+enum OrderType {
+  STANDARD_SALE
+  PICKUP
+  DELIVERY
+  RESERVATION
+  PREORDER
+  INSTALLMENT_PLACEHOLDER
+  TRADE_IN_PLACEHOLDER
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING_CONFIRMATION
+  CONFIRMED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum OrderPaymentStatus {
+  UNPAID
+  PENDING
+  AUTHORIZED
+  PAID
+  PARTIALLY_PAID
+  FAILED
+  CANCELLED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum OrderAllocationStatus {
+  UNALLOCATED
+  PARTIALLY_ALLOCATED
+  ALLOCATED
+  ALLOCATION_FAILED
+  RELEASED
+}
+
+enum OrderFulfillmentStatus {
+  UNFULFILLED
+  PENDING
+  PICKING
+  PACKED
+  READY_FOR_PICKUP
+  SHIPPED
+  PARTIALLY_FULFILLED
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum OrderFulfillmentMethod {
+  PICKUP
+  DELIVERY
+}
+
+enum OrderNoteVisibility {
+  INTERNAL
+  CUSTOMER
+}
+
+enum OrderActorType {
+  CUSTOMER
+  ADMIN
+  GUEST
+  SYSTEM
+}
+
+enum OrderEventStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
+enum OrderDeviceAssignmentStatus {
+  RESERVED
+  RELEASED
+  FULFILLED
+}
+
 model User {
   id              String                 @id @default(cuid())
   name            String?
@@ -215,6 +307,9 @@ model User {
   productImportBatches ProductImportBatch[] @relation("ProductImportRequestedBy")
   inventoryMovements   StockMovement[]         @relation("StockMovementActor")
   inventoryReservations InventoryReservation[]  @relation("InventoryReservationCreator")
+  orders              Order[]                 @relation("OrderCustomer")
+  orderStatusHistory  OrderStatusHistory[]    @relation("OrderStatusActor")
+  orderNotes          OrderNote[]             @relation("OrderNoteAuthor")
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
@@ -238,6 +333,7 @@ model AdminUser {
 model UserProfile {
   id               String   @id @default(cuid())
   userId           String   @unique
+  passwordHash     String?
   firstName        String?
   lastName         String?
   nationalCodeHash String?  @unique
@@ -469,6 +565,7 @@ model CatalogProduct {
   seo                 ProductSeo?
   specificationsStructured ProductSpecification[]
   workflowEvents      ProductWorkflowEvent[]
+  orderItems          OrderItem[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -505,6 +602,7 @@ model CatalogVariant {
   skuRecord           ProductSku?
   specificationsStructured ProductSpecification[]
   media               ProductMedia[]
+  orderItems          OrderItem[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -592,6 +690,7 @@ model ProductSku {
   inventoryItems      InventoryItem[]
   stockMovements      StockMovement[]
   deviceUnits         DeviceUnit[]
+  orderItems          OrderItem[]
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
@@ -824,6 +923,8 @@ model Branch {
   isPickupEnabled Boolean        @default(true)
   inventory   BranchInventory[]
   warehouses  Warehouse[]
+  orderAllocations OrderAllocation[]
+  orderFulfillments OrderFulfillment[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -852,6 +953,8 @@ model Warehouse {
   status    WarehouseStatus @default(ACTIVE)
   branch    Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   locations InventoryLocation[]
+  orderAllocations OrderAllocation[]
+  orderFulfillments OrderFulfillment[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 
@@ -900,6 +1003,7 @@ model InventoryItem {
   sku               ProductSku           @relation(fields: [skuId], references: [id], onDelete: Restrict)
   deviceUnits       DeviceUnit[]
   reservations      InventoryReservation[]
+  orderAllocations  OrderAllocation[]
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -945,6 +1049,7 @@ model DeviceUnit {
   sku               ProductSku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
   inventoryItem     InventoryItem?   @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   reservation       InventoryReservation? @relation("InventoryReservationDeviceUnits", fields: [reservationId], references: [id], onDelete: Restrict)
+  orderAssignments  OrderDeviceAssignment[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
@@ -965,6 +1070,8 @@ model InventoryReservation {
   inventoryItem  InventoryItem              @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   createdBy      User?                      @relation("InventoryReservationCreator", fields: [createdById], references: [id], onDelete: SetNull)
   deviceUnits    DeviceUnit[]               @relation("InventoryReservationDeviceUnits")
+  orderAllocations OrderAllocation[]
+  orderDeviceAssignments OrderDeviceAssignment[] @relation("OrderDeviceAssignmentReservation")
   createdAt      DateTime                   @default(now())
   updatedAt      DateTime                   @updatedAt
 
@@ -982,6 +1089,7 @@ model StorefrontCart {
   expiresAt      DateTime?
   user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   items          StorefrontCartItem[]
+  sourceOrder    Order?               @relation("OrderSourceCart")
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -990,16 +1098,271 @@ model StorefrontCart {
 }
 
 model StorefrontCartItem {
-  cartId    String
-  variantId String
-  quantity  Int            @default(1)
-  cart      StorefrontCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  variant   CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  cartId         String
+  variantId      String
+  quantity       Int            @default(1)
+  unitPriceRials BigInt?
+  cart           StorefrontCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant        CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@id([cartId, variantId])
   @@index([variantId])
+}
+
+model Order {
+  id                    String                 @id @default(cuid())
+  orderNumber           String                 @unique
+  source                OrderSource
+  type                  OrderType
+  customerId            String?
+  sourceCartId          String?                @unique
+  guestTokenHash        String?
+  customerSnapshot      Json
+  billingAddressSnapshot Json?
+  shippingAddressSnapshot Json?
+  currency              String                 @default("IRR")
+  subtotalRials         BigInt
+  discountTotalRials    BigInt                 @default(0)
+  taxTotalRials         BigInt                 @default(0)
+  shippingTotalRials    BigInt                 @default(0)
+  feeTotalRials         BigInt                 @default(0)
+  grandTotalRials       BigInt
+  paymentStatus         OrderPaymentStatus     @default(UNPAID)
+  fulfillmentStatus     OrderFulfillmentStatus @default(UNFULFILLED)
+  fulfillmentMethod     OrderFulfillmentMethod
+  orderStatus           OrderStatus            @default(DRAFT)
+  allocationStatus      OrderAllocationStatus  @default(UNALLOCATED)
+  version               Int                    @default(1)
+  customer              User?                  @relation("OrderCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  sourceCart            StorefrontCart?        @relation("OrderSourceCart", fields: [sourceCartId], references: [id], onDelete: Restrict)
+  items                 OrderItem[]
+  allocations           OrderAllocation[]
+  payments              OrderPayment[]
+  fulfillment           OrderFulfillment?
+  statusHistory         OrderStatusHistory[]
+  notes                 OrderNote[]
+  idempotencyRecords    OrderIdempotencyRecord[]
+  outboxEvents          OrderOutboxEvent[]
+  deviceAssignments     OrderDeviceAssignment[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([customerId, createdAt])
+  @@index([guestTokenHash, createdAt])
+  @@index([orderStatus, createdAt])
+  @@index([paymentStatus, createdAt])
+  @@index([fulfillmentStatus, createdAt])
+  @@index([source, createdAt])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model OrderItem {
+  id                    String         @id @default(cuid())
+  orderId               String
+  productId             String
+  variantId             String
+  productSkuId          String
+  sku                   String
+  productName           String
+  variantName           String?
+  quantity              Int
+  unitPriceRials        BigInt
+  discountAmountRials   BigInt         @default(0)
+  taxAmountRials        BigInt         @default(0)
+  lineTotalRials        BigInt
+  warrantySnapshot      Json?
+  attributesSnapshot    Json?
+  order                 Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product               CatalogProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant               CatalogVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  productSku            ProductSku     @relation(fields: [productSkuId], references: [id], onDelete: Restrict)
+  allocations           OrderAllocation[]
+  deviceAssignments     OrderDeviceAssignment[]
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([orderId, createdAt])
+  @@index([variantId])
+  @@index([productSkuId])
+}
+
+model OrderAllocation {
+  id              String                @id @default(cuid())
+  orderId         String
+  orderItemId     String
+  branchId        String
+  warehouseId     String
+  inventoryItemId String
+  reservationId   String?               @unique
+  quantity        Int
+  status          OrderAllocationStatus @default(UNALLOCATED)
+  order           Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem       OrderItem             @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  inventoryItem   InventoryItem         @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  reservation     InventoryReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  deviceAssignments OrderDeviceAssignment[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([orderId, status])
+  @@index([orderItemId, status])
+  @@index([branchId, status])
+  @@index([warehouseId, status])
+  @@index([inventoryItemId, status])
+}
+
+/**
+ * Immutable OMS evidence for a tracked device selected by a reservation.
+ * The active-device partial unique index in the migration prevents two live
+ * order allocations from claiming the same IMEI/serial unit while allowing a
+ * released unit to be assigned to a later order.
+ */
+model OrderDeviceAssignment {
+  id                 String                      @id @default(cuid())
+  orderId            String
+  orderItemId        String
+  orderAllocationId  String
+  deviceUnitId       String
+  reservationId      String
+  imeiSnapshot       String?
+  serialNumberSnapshot String?
+  status             OrderDeviceAssignmentStatus @default(RESERVED)
+  releasedAt         DateTime?
+  fulfilledAt        DateTime?
+  order              Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem          OrderItem                   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  allocation         OrderAllocation             @relation(fields: [orderAllocationId], references: [id], onDelete: Cascade)
+  deviceUnit         DeviceUnit                  @relation(fields: [deviceUnitId], references: [id], onDelete: Restrict)
+  reservation        InventoryReservation        @relation("OrderDeviceAssignmentReservation", fields: [reservationId], references: [id], onDelete: Restrict)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@unique([orderAllocationId, deviceUnitId])
+  @@index([orderId, status])
+  @@index([orderItemId, status])
+  @@index([deviceUnitId, status])
+  @@index([reservationId, status])
+}
+
+model OrderPayment {
+  id                String             @id @default(cuid())
+  orderId           String
+  provider          String
+  method            String
+  amountRials       BigInt
+  status            OrderPaymentStatus @default(UNPAID)
+  idempotencyKey    String
+  providerReference String?            @unique
+  metadata          Json?
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([orderId, idempotencyKey])
+  @@index([orderId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model OrderFulfillment {
+  id           String                 @id @default(cuid())
+  orderId      String                 @unique
+  method       OrderFulfillmentMethod
+  branchId     String?
+  warehouseId  String?
+  status       OrderFulfillmentStatus @default(PENDING)
+  trackingCode String?
+  preparedAt   DateTime?
+  shippedAt    DateTime?
+  deliveredAt  DateTime?
+  order        Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  branch       Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse?             @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([branchId, status])
+  @@index([warehouseId, status])
+  @@index([status, createdAt])
+}
+
+model OrderStatusHistory {
+  id         String         @id @default(cuid())
+  orderId    String
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actorId    String?
+  actorType  OrderActorType
+  reasonCode String?
+  note       String?        @db.Text
+  requestId  String
+  version    Int
+  order      Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor      User?          @relation("OrderStatusActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime       @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([requestId])
+}
+
+model OrderNote {
+  id         String              @id @default(cuid())
+  orderId    String
+  visibility OrderNoteVisibility @default(INTERNAL)
+  content    String              @db.Text
+  authorId   String
+  order      Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  author     User                @relation("OrderNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([orderId, visibility, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model OrderIdempotencyRecord {
+  id                String   @id @default(cuid())
+  scope             String
+  key               String
+  requestHash       String
+  responseReference String
+  orderId           String?
+  expiresAt         DateTime
+  order             Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@index([orderId])
+}
+
+model OrderOutboxEvent {
+  id               String           @id @default(cuid())
+  orderId          String
+  eventType        String
+  aggregateVersion Int
+  schemaVersion    Int              @default(1)
+  payload          Json
+  /** Domain occurrence time is distinct from persistence/update bookkeeping. */
+  occurredAt       DateTime         @default(now())
+  status           OrderEventStatus @default(PENDING)
+  availableAt      DateTime         @default(now())
+  attempts         Int              @default(0)
+  publishedAt      DateTime?
+  lastError        String?          @db.Text
+  order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([orderId, eventType, aggregateVersion])
+  @@index([status, availableAt])
+  @@index([orderId, occurredAt])
 }
 
 model Notification {
@@ -1023,17 +1386,21 @@ model Notification {
 }
 
 model AuditLog {
-  id         String    @id @default(cuid())
-  actorId    String?
-  action     String
-  entityType String
-  entityId   String?
-  requestId  String
-  ipAddress  String?
-  userAgent  String?
-  metadata   Json?
-  actor      User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
-  createdAt  DateTime  @default(now())
+  id             String    @id @default(cuid())
+  actorId        String?
+  actorType      String?
+  action         String
+  entityType     String
+  entityId       String?
+  requestId      String
+  reasonCode     String?
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json?
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  actor          User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
 
   @@index([entityType, entityId, createdAt])
   @@index([actorId, createdAt])
